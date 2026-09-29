@@ -1,0 +1,181 @@
+import type { Resource } from "../types";
+
+export const resources: Resource[] = [
+    {
+        key: "lancamentos",
+        title: "Lançamentos",
+        endpoint: "/lancamentos",
+        singular: "lançamento",
+        icon: "arrows",
+        fields: [
+            { name: "descricao", label: "Descrição", required: true, wide: true },
+            { name: "valor", label: "Valor", type: "number", required: true },
+            {
+                name: "tipo",
+                label: "Tipo",
+                type: "select",
+                required: true,
+                options: [
+                    ["pagar", "A pagar"],
+                    ["receber", "A receber"],
+                ],
+            },
+            { name: "data_vencimento", label: "Vencimento", type: "date", required: true },
+            { name: "pessoa_id", label: "Pessoa", type: "select", source: "pessoas" },
+            { name: "banco_id", label: "Instituição", type: "select", source: "bancos" },
+            { name: "parcelas", label: "Número de parcelas", type: "number", required: true, wide: true },
+        ],
+        columns: [
+            ["descricao", "Descrição"],
+            ["pessoa_id", "Pessoa"],
+            ["tipo", "Tipo"],
+            ["data_vencimento", "Vencimento"],
+            ["valor", "Valor"],
+            ["status", "Status"],
+        ],
+    },
+    {
+        key: "pessoas",
+        title: "Pessoas",
+        endpoint: "/pessoas",
+        singular: "pessoa",
+        icon: "users",
+        fields: [
+            { name: "nome", label: "Nome", required: true, wide: true },
+            { name: "documento", label: "CPF ou CNPJ" },
+            { name: "celular", label: "Celular" },
+            { name: "cliente", label: "É cliente", type: "checkbox" },
+            { name: "fornecedor", label: "É fornecedor", type: "checkbox" },
+        ],
+        columns: [
+            ["nome", "Nome"],
+            ["documento", "Documento"],
+            ["celular", "Celular"],
+            ["cliente", "Cliente"],
+            ["fornecedor", "Fornecedor"],
+        ],
+    },
+    {
+        key: "formas",
+        title: "Formas de pagamento",
+        endpoint: "/formas-pagamento",
+        singular: "forma de pagamento",
+        icon: "card",
+        fields: [
+            { name: "descricao", label: "Nome", required: true, wide: true },
+            {
+                name: "tipo",
+                label: "Tipo",
+                type: "select",
+                required: true,
+                options: [
+                    ["dinheiro", "Dinheiro"],
+                    ["pix", "Pix"],
+                    ["debito", "Cartão de débito"],
+                    ["credito", "Cartão de crédito"],
+                    ["boleto", "Boleto"],
+                    ["transferencia", "Transferência"],
+                    ["outro", "Outro"],
+                ],
+            },
+            { name: "banco_id", label: "Instituição", type: "select", source: "bancos" },
+        ],
+        columns: [
+            ["descricao", "Forma"],
+            ["tipo", "Tipo"],
+            ["banco_id", "Instituição"],
+            ["ativo", "Ativa"],
+        ],
+    },
+    {
+        key: "bancos",
+        title: "Bancos",
+        endpoint: "/bancos",
+        singular: "banco",
+        icon: "bank",
+        fields: [{ name: "descricao", label: "Nome do banco", required: true, wide: true }],
+        columns: [
+            ["descricao", "Banco"],
+            ["ativo", "Ativo"],
+        ],
+    },
+    {
+        key: "movimentacoes",
+        title: "Movimentações",
+        endpoint: "/movimentacoes",
+        singular: "movimentação",
+        icon: "arrowDown",
+        fields: [
+            {
+                name: "lancamento_id",
+                label: "Lançamento",
+                type: "select",
+                source: "lancamentos",
+                required: true,
+                wide: true,
+            },
+            {
+                name: "forma_pagamento_id",
+                label: "Forma de pagamento",
+                type: "select",
+                source: "formas",
+                required: true,
+            },
+            { name: "valor", label: "Valor", type: "number", required: true },
+            { name: "data_movimentacao", label: "Data", type: "date" },
+        ],
+        columns: [
+            ["lancamento_id", "Lançamento"],
+            ["forma_pagamento_id", "Forma"],
+            ["data_movimentacao", "Data"],
+            ["valor", "Valor"],
+        ],
+    },
+    {
+        key: "recebimentos",
+        title: "Recebimentos",
+        endpoint: "/recebimentos",
+        singular: "recebimento",
+        icon: "arrowUp",
+        fields: [
+            {
+                name: "lancamento_id",
+                label: "Lançamento",
+                type: "select",
+                source: "lancamentos",
+                required: true,
+                wide: true,
+            },
+            {
+                name: "forma_pagamento_id",
+                label: "Forma de pagamento",
+                type: "select",
+                source: "formas",
+                required: true,
+            },
+            { name: "valor", label: "Valor", type: "number", required: true },
+            { name: "data_recebimento", label: "Data", type: "date" },
+        ],
+        columns: [
+            ["lancamento_id", "Lançamento"],
+            ["forma_pagamento_id", "Forma"],
+            ["data_recebimento", "Data"],
+            ["valor", "Valor"],
+        ],
+    },
+];
+
+export const pagePaths: Record<string, string> = {
+    dashboard: "/",
+    caixa: "/caixa",
+    lancamentos: "/lancamentos",
+    pessoas: "/pessoas",
+    formas: "/formas-pagamento",
+    bancos: "/bancos",
+    movimentacoes: "/movimentacoes",
+    recebimentos: "/recebimentos",
+};
+
+export function pageFromPath(path: string) {
+    return Object.entries(pagePaths).find(([, value]) => value === path)?.[0] || "dashboard";
+}

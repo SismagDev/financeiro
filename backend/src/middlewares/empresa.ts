@@ -25,8 +25,8 @@ export async function requireEmpresa(req: Request, res: Response, next: NextFunc
     }
 
     try {
-        const membership = await pool.query(
-            `SELECT 1 FROM users_empresas ue
+        const membership = await pool.query<{ licenca_expira_em: Date | null }>(
+            `SELECT e.licenca_expira_em FROM users_empresas ue
              JOIN empresas e ON e.id = ue.empresa_id
              JOIN users u ON u.id = ue.user_id
              WHERE ue.user_id = $1 AND ue.empresa_id = $2 AND e.ativo = TRUE AND u.ativo = TRUE LIMIT 1`,
@@ -35,6 +35,12 @@ export async function requireEmpresa(req: Request, res: Response, next: NextFunc
 
         if (membership.rowCount === 0) {
             res.status(403).json({ message: "Você não tem acesso a esta empresa" });
+            return;
+        }
+
+        const expiration = membership.rows[0].licenca_expira_em;
+        if (req.currentUser?.role !== "admin" && (!expiration || expiration <= new Date())) {
+            res.status(403).json({ message: "A licença desta empresa expirou" });
             return;
         }
 

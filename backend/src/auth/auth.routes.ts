@@ -20,15 +20,7 @@ const loginIpLimiter = rateLimit({
     },
 });
 
-const registerLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => ipKeyGenerator(req.ip ?? "desconhecido"),
-});
 
-router.post("/register", registerLimiter, registerUser);
 router.post("/register/admin", attachCurrentUser, requireRole("admin"), registerUser);
 router.post("/login", loginIpLimiter, login);
 router.post("/logout", attachCurrentUser, logout);

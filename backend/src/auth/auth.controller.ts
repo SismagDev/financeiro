@@ -212,7 +212,7 @@ export async function login(req: Request, res: Response) {
             await new Promise((r) => setTimeout(r, 1000)); // aguarda 1 segundo
             return res
                 .status(401)
-                .json({ message: typeof user === "string" ? user : AUTH_MESSAGES.INVALID_CREDENTIALS });
+                .json({ message: AUTH_MESSAGES.INVALID_CREDENTIALS });
         }
 
         req.session.regenerate((err: any) => {

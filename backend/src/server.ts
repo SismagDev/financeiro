@@ -15,6 +15,7 @@ import lancamentosRoutes from "./lancamentos/lancamentos.routes";
 import movimentacoesRoutes from "./movimentacoes/movimentacoes.routes";
 import recebimentosRoutes from "./recebimentos/recebimentos.routes";
 import caixaRoutes from "./caixa/caixa.routes";
+import adminRoutes from "./admin/admin.routes";
 
 import { pool } from "./db";
 import { AUTH_COOKIE_NAME, SESSION_MAX_AGE_MS } from "./auth/auth.constants";
@@ -90,6 +91,7 @@ async function startServer() {
     app.use("/movimentacoes", movimentacoesRoutes);
     app.use("/recebimentos", recebimentosRoutes);
     app.use("/caixa", caixaRoutes);
+    app.use("/admin", adminRoutes);
 
     app.get("/health", (_req, res) => {
         res.status(200).json({ status: "ok" });

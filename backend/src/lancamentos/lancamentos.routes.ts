@@ -15,6 +15,7 @@ import {
     uuidField,
 } from "../resources/resource";
 import { formatarErroZod } from "../utils/zod";
+import { createSettlement, SettlementError } from "./settlement.service";
 
 const tipo = z.enum(["pagar", "receber"]);
 const status = z.enum(["pendente", "parcial", "pago", "cancelado"]);
@@ -162,91 +163,33 @@ router.post("/parcelado", writeAccess, async (req: Request, res: Response) => {
 
 router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
-    const body = z
-        .object({
-            forma_pagamento_id: z.string().uuid(),
-            valor: z.coerce.number().positive(),
-            data: data.optional(),
-        })
-        .strict()
-        .safeParse(req.body);
+    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional() }).strict().safeParse(req.body);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
     if (!body.success) return res.status(400).json(formatarErroZod(body.error));
 
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        const launchResult = await client.query<{ valor: string; tipo: "pagar" | "receber"; status: string }>(
-            "SELECT valor, tipo, status FROM lancamentos WHERE empresa_id = $1 AND id = $2 FOR UPDATE",
+        const table = "movimentacoes" as const;
+        const receiving = await client.query<{ tipo: "pagar" | "receber" }>(
+            "SELECT tipo FROM lancamentos WHERE empresa_id = $1 AND id = $2",
             [req.empresaId, id.data],
         );
-        const lancamento = launchResult.rows[0];
-        if (!lancamento) {
-            await client.query("ROLLBACK");
-            return res.status(404).json({ message: "Lançamento não encontrado" });
-        }
-        if (lancamento.status === "cancelado") {
-            await client.query("ROLLBACK");
-            return res.status(409).json({ message: "Não é possível dar baixa em um lançamento cancelado" });
-        }
-        const paymentForm = await client.query(
-            "SELECT 1 FROM formas_pagamento WHERE empresa_id = $1 AND id = $2 AND ativo = TRUE",
-            [req.empresaId, body.data.forma_pagamento_id],
-        );
-        if (!paymentForm.rowCount) {
-            await client.query("ROLLBACK");
-            return res.status(400).json({ message: "Forma de pagamento não encontrada ou inativa" });
-        }
-
-        const table = lancamento.tipo === "receber" ? "recebimentos" : "movimentacoes";
-        const valueColumn = lancamento.tipo === "receber" ? "valor" : "valor";
-        const sum = await client.query<{ total: string }>(
-            `SELECT COALESCE(SUM(${valueColumn}), 0) AS total FROM ${table} WHERE empresa_id = $1 AND lancamento_id = $2`,
-            [req.empresaId, id.data],
-        );
-        const restante = Math.round((Number(lancamento.valor) - Number(sum.rows[0].total)) * 100) / 100;
-        if (body.data.valor - restante > 0.009) {
-            await client.query("ROLLBACK");
-            return res
-                .status(409)
-                .json({ message: `O valor informado é maior que o saldo de ${restante.toFixed(2)}` });
-        }
-
-        const dateColumn = lancamento.tipo === "receber" ? "data_recebimento" : "data_movimentacao";
-        await client.query(
-            `INSERT INTO ${table} (empresa_id, lancamento_id, forma_pagamento_id, valor, ${dateColumn})
-             VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE))`,
-            [
-                req.empresaId,
-                id.data,
-                body.data.forma_pagamento_id,
-                body.data.valor.toFixed(2),
-                body.data.data ?? null,
-            ],
-        );
-        const baixado = Number(sum.rows[0].total) + body.data.valor;
-        const novoStatus = baixado >= Number(lancamento.valor) - 0.005 ? "pago" : "parcial";
-        await client.query("UPDATE lancamentos SET status = $1 WHERE empresa_id = $2 AND id = $3", [
-            novoStatus,
-            req.empresaId,
-            id.data,
-        ]);
+        const settlementTable = receiving.rows[0]?.tipo === "receber" ? "recebimentos" : table;
+        const settlement = await createSettlement(client, req.empresaId!, settlementTable, {
+            lancamentoId: id.data,
+            formaPagamentoId: body.data.forma_pagamento_id,
+            valor: body.data.valor,
+            data: body.data.data,
+        });
         await client.query("COMMIT");
-        return res
-            .status(201)
-            .json({
-                id: id.data,
-                status: novoStatus,
-                saldo: Math.max(0, Number(lancamento.valor) - baixado),
-            });
-    } catch {
+        return res.status(201).json({ id: id.data, status: settlement.status, saldo: settlement.saldo });
+    } catch (error) {
         await client.query("ROLLBACK");
+        if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
         return res.status(400).json({ message: "Não foi possível dar baixa no lançamento" });
-    } finally {
-        client.release();
-    }
+    } finally { client.release(); }
 });
-
 router.use(createResourceRouter(schema, false));
 
 export default router;

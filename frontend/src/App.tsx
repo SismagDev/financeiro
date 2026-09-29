@@ -18,6 +18,8 @@ const RecordFormFields = lazy(() =>
     import("./components/RecordFormFields").then(({ RecordFormFields }) => ({ default: RecordFormFields })),
 );
 
+const AdminPage = lazy(() => import("./pages/AdminPage").then(({ AdminPage }) => ({ default: AdminPage })));
+
 async function api(path: string, options: RequestInit = {}, empresaId?: string) {
     const headers = new Headers(options.headers);
     if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -258,10 +260,9 @@ function App() {
 
     useEffect(() => {
         api("/auth/me")
-            .then((result) => {
-                console.log(result.data);
-                setUser(result.data);
+            .then((result) => {                setUser(result.data);
                 setAuthChecked(true);
+                if (result.data.role === "admin") { setLoading(false); return; }
                 return loadCompanies();
             })
             .catch(() => {
@@ -275,6 +276,7 @@ function App() {
         if (!user) return;
         if (!companies.length) return;
         if (!company) return;
+        if (company.licenca_status === "vencida") return;
         const endpoints = resources.map((item) =>
             api(item.endpoint, {}, company.id)
                 .then((result: { data: Row[] }) => [item.key, result.data] as const)
@@ -322,6 +324,7 @@ function App() {
     async function onLogin(nextUser: User) {
         setUser(nextUser);
         setAuthChecked(true);
+        if (nextUser.role === "admin") { setLoading(false); return; }
         setLoading(true);
         try {
             await loadCompanies();
@@ -345,6 +348,7 @@ function App() {
         setCompany(next);
         localStorage.setItem("fluxo-company", next.id);
         setCompanyMenu(false);
+        if (next.licenca_status === "vencida") notify("A licença desta empresa expirou.", "error");
         navigate("dashboard");
     }
 
@@ -509,7 +513,7 @@ function App() {
         try {
             await api(`/empresas/${company.id}`, {
                 method: "PATCH",
-                body: JSON.stringify({ nome: values.nome, cnpj: values.cnpj || null }),
+                body: JSON.stringify({ nome: values.nome, ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
             });
             await loadCompanies();
             setModal(null);
@@ -520,26 +524,6 @@ function App() {
             setBusy(false);
         }
     }
-    async function createCompany(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        setBusy(true);
-        const values = Object.fromEntries(new FormData(event.currentTarget));
-        try {
-            await api("/empresas", {
-                method: "POST",
-                body: JSON.stringify({ nome: values.nome, ...(values.cnpj ? { cnpj: values.cnpj } : {}) }),
-            });
-            const chosen = await loadCompanies();
-            setModal(null);
-            if (chosen) setCompany(chosen);
-            notify("Empresa criada. Bem-vindo ao Fluxo!");
-        } catch (e) {
-            notify(e instanceof Error ? e.message : "Não foi possível criar a empresa.", "error");
-        } finally {
-            setBusy(false);
-        }
-    }
-
     if (!authChecked)
         return (
             <div className="full-loader">
@@ -548,6 +532,7 @@ function App() {
             </div>
         );
     if (!user) return <AuthScreen onLogin={onLogin} />;
+    if (user.role === "admin") return <Suspense fallback={<div className="full-loader"><span className="spinner spinner-large" /></div>}><AdminPage user={user} request={api} onLogout={logout} /></Suspense>;
     if (loading && !companies.length)
         return (
             <div className="full-loader">
@@ -557,59 +542,11 @@ function App() {
         );
     if (!company)
         return (
-            <>
             <main className="onboarding">
-                <div className="onboarding-logo">
-                    <span className="brand-mark">
-                        <Icon name="trend" />
-                    </span>
-                    <b>
-                        Fluxo<span className="brand-dot">.</span>
-                    </b>
-                </div>
-                <div className="onboarding-card">
-                    <div className="onboarding-icon">
-                        <Icon name="bank" size={26} />
-                    </div>
-                    <span className="eyebrow muted">PRIMEIRO PASSO</span>
-                    <h1>
-                        Vamos configurar
-                        <br />
-                        sua empresa.
-                    </h1>
-                    <p>
-                        Crie seu espaço financeiro para começar a organizar as contas, lançamentos e
-                        recebimentos.
-                    </p>
-                    <button className="button button-primary" onClick={() => setModal("company")}>
-                        Cadastrar empresa <span>→</span>
-                    </button>
-                    <button className="text-button" onClick={logout}>
-                        Sair da conta
-                    </button>
-                </div>
+                <div className="onboarding-logo"><span className="brand-mark"><Icon name="trend" /></span><b>Fluxo<span className="brand-dot">.</span></b></div>
+                <div className="onboarding-card"><div className="onboarding-icon"><Icon name="bank" size={26} /></div><span className="eyebrow muted">ACESSO PENDENTE</span><h1>Você ainda não possui<br />uma empresa vinculada.</h1><p>Peça a um administrador para vincular seu usuário a uma empresa.</p><button className="text-button" onClick={logout}>Sair da conta</button></div>
             </main>
-            {modal === "company" && (
-                <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
-                    <section className="modal-card">
-                        <div className="modal-head">
-                            <div><span className="eyebrow muted">NOVA EMPRESA</span><h2>Cadastre sua empresa</h2></div>
-                            <button className="icon-button" onClick={() => setModal(null)}><Icon name="close" /></button>
-                        </div>
-                        <form onSubmit={createCompany} className="record-form">
-                            <label className="form-field full-field">Nome da empresa<input name="nome" placeholder="Ex.: Aurora Studio" minLength={2} maxLength={200} required autoFocus /></label>
-                            <label className="form-field full-field">CNPJ <span className="optional-label">Opcional</span><input name="cnpj" inputMode="numeric" maxLength={14} placeholder="Somente números" pattern="[0-9]{14}" /></label>
-                            <div className="modal-actions">
-                                <button type="button" className="button button-quiet" onClick={() => setModal(null)}>Cancelar</button>
-                                <button className="button button-primary" disabled={busy}>{busy && <span className="spinner" />} Criar empresa <span>→</span></button>
-                            </div>
-                        </form>
-                    </section>
-                </div>
-            )}
-        </>
         );
-
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
         { key: "lancamentos", title: "Lançamentos", icon: "arrows", section: "FINANCEIRO" },
@@ -736,21 +673,7 @@ function App() {
                                     {item.nome}
                                     {item.id === company.id && <Icon name="check" size={16} />}
                                 </button>
-                            ))}
-                            {company.perfil === "admin" && (
-                                <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}>
-                                    <Icon name="edit" size={16} /> Editar empresa
-                                </button>
-                            )}
-                            <button
-                                className="add-company"
-                                onClick={() => {
-                                    setModal("company");
-                                    setCompanyMenu(false);
-                                }}
-                            >
-                                <Icon name="plus" size={16} /> Adicionar empresa
-                            </button>
+                            ))}                            <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Editar empresa</button>
                         </div>
                     )}
                     <nav className="nav-scroll">
@@ -917,7 +840,9 @@ function App() {
                         </div>
                     </header>
                     <div className="page-content">
-                        {page === "dashboard" ? (
+                        {company.licenca_status === "vencida" ? (
+                            <section className="panel license-expired"><span className="eyebrow muted">LICENÇA VENCIDA</span><h2>Esta empresa está com a licença expirada.</h2><p>Solicite a renovação a um administrador para voltar a utilizar os recursos financeiros.</p></section>
+                        ) : page === "dashboard" ? (
                             <DashboardPage
                                 user={user}
                                 rows={visibleRows}
@@ -1011,8 +936,8 @@ function App() {
                                     <Icon name="close" />
                                 </button>
                             </div>
-                            {modal === "company" || modal === "company-edit" ? (
-                                <form onSubmit={modal === "company-edit" ? updateCompany : createCompany} className="record-form">
+                            {modal === "company-edit" ? (
+                                <form onSubmit={updateCompany} className="record-form">
                                     <label className="form-field full-field">
                                         Nome da empresa
                                         <input
@@ -1021,21 +946,10 @@ function App() {
                                             minLength={2}
                                             maxLength={200}
                                             required
-                                            defaultValue={modal === "company-edit" ? company.nome : ""}
+                                            defaultValue={company.nome}
                                             autoFocus
                                         />
-                                    </label>
-                                    <label className="form-field full-field">
-                                        CNPJ <span className="optional-label">Opcional</span>
-                                        <input
-                                            name="cnpj"
-                                            inputMode="numeric"
-                                            maxLength={14}
-                                            placeholder="Somente números"
-                                            pattern="[0-9]{14}"
-                                            defaultValue={modal === "company-edit" ? company.cnpj || "" : ""}
-                                        />
-                                    </label>
+                                    </label>{user?.role === "admin" && <label className="form-field full-field">CPF/CNPJ <span className="optional-label">Opcional</span><input name="cnpj" inputMode="numeric" maxLength={14} placeholder="Somente números" pattern="[0-9]{11}([0-9]{3})?" defaultValue={company.cnpj || ""} /></label>}
                                     <div className="modal-actions">
                                         <button
                                             type="button"

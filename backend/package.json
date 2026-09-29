@@ -1,46 +1,46 @@
 {
-    "name": "backend",
-    "version": "1.0.0",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1",
-        "dev": "nodemon",
-        "build": "tsc",
-        "db:migrate": "tsx src/utils/migrate.ts",
-        "seed:demo": "tsx src/utils/seedDemo.ts"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "type": "commonjs",
-    "dependencies": {
-        "argon2": "^0.44.0",
-        "connect-pg-simple": "^10.0.0",
-        "cookie-parser": "^1.4.7",
-        "cors": "^2.8.6",
-        "dotenv": "^17.4.2",
-        "express": "^5.2.1",
-        "express-rate-limit": "^8.5.2",
-        "express-session": "^1.19.0",
-        "pg": "^8.21.0",
-        "playwright": "^1.63.0",
-        "tsx": "^4.22.3",
-        "zod": "^4.4.3"
-    },
-    "devDependencies": {
-        "@types/connect-pg-simple": "^7.0.3",
-        "@types/cookie-parser": "^1.4.10",
-        "@types/cors": "^2.8.19",
-        "@types/express": "^5.0.6",
-        "@types/express-session": "^1.19.0",
-        "@types/node": "^25.9.0",
-        "@types/pg": "^8.20.0",
-        "nodemon": "^3.1.14",
-        "ts-node": "^10.9.2"
-    },
-    "allowScripts": {
-        "argon2@0.44.0": true,
-        "esbuild@0.28.2": true
-    }
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "dev": "nodemon",
+    "build": "tsc",
+    "db:migrate": "tsx src/utils/migrate.ts",
+    "seed:demo": "tsx src/utils/seedDemo.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "connect-pg-simple": "^10.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.19.0",
+    "pg": "^8.21.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.22.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/connect-pg-simple": "^7.0.3",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/node": "^25.9.0",
+    "@types/pg": "^8.20.0",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2"
+  },
+  "allowScripts": {
+    "argon2@0.44.0": true,
+    "esbuild@0.28.2": true
+  }
 }

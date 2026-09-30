@@ -473,7 +473,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                                     ))}
                             </select>
                             <button
-                                className="button button-primary "
+                                className="button button-primary"
                                 onClick={() => void linkUser()}
                                 disabled={!linkUserId}
                             >

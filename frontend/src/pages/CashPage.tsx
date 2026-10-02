@@ -94,7 +94,7 @@ export function CashPage({
                                     <td>{date(row.data)}</td>
                                     <td>
                                         <b>{String(row.descricao)}</b>
-                                        <small>{String(row.categoria || "")}</small>
+                                        <span className={`cash-category type-label ${row.categoria === "receber" ? "type-income" : "type-expense"}`}>{row.categoria === "receber" ? "Receber" : row.categoria === "pagar" ? "Pagar" : String(row.categoria || "")}</span>
                                     </td>
                                     <td>{row.tipo}</td>
                                     <td>{String(row.forma_pagamento || "—")}</td>

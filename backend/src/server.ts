@@ -12,6 +12,7 @@ import pessoasRoutes from "./pessoas/pessoas.routes";
 import bancosRoutes from "./bancos/bancos.routes";
 import formasPagamentoRoutes from "./formas_pagamento/formas_pagamento.routes";
 import lancamentosRoutes from "./lancamentos/lancamentos.routes";
+import planosContasRoutes from "./planos_contas/planos_contas.routes";
 import movimentacoesRoutes from "./movimentacoes/movimentacoes.routes";
 import recebimentosRoutes from "./recebimentos/recebimentos.routes";
 import caixaRoutes from "./caixa/caixa.routes";
@@ -87,6 +88,7 @@ async function startServer() {
     app.use("/bancos", bancosRoutes);
     app.use("/formas-pagamento", formasPagamentoRoutes);
     app.use("/lancamentos", lancamentosRoutes);
+    app.use("/planos-contas", planosContasRoutes);
     app.use("/lancamento", lancamentosRoutes);
     app.use("/movimentacoes", movimentacoesRoutes);
     app.use("/recebimentos", recebimentosRoutes);

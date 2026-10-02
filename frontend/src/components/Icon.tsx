@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 
 const paths: Record<string, ReactNode> = {
+  eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></>,
+  eyeOff: <><path d="m3 3 18 18M10 5c7-1 12 7 12 7a18 18 0 0 1-4 4M6 6a18 18 0 0 0-4 6s3 7 10 7a13 13 0 0 0 5-1"/><path d="M9 9a4 4 0 0 0 6 6"/></>,
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
   arrows: <><path d="M7 7h13l-3-3"/><path d="m20 7-3 3M17 17H4l3 3"/><path d="m4 17 3-3"/></>,
   users: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,

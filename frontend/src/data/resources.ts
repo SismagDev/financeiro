@@ -9,6 +9,7 @@ export const resources: Resource[] = [
         icon: "arrows",
         fields: [
             { name: "descricao", label: "Descrição", required: true, wide: true },
+            { name: "plano_conta_id", label: "Plano de contas", type: "select", source: "planos", wide: true },
             { name: "valor", label: "Valor", type: "number", required: true },
             {
                 name: "tipo",
@@ -21,7 +22,8 @@ export const resources: Resource[] = [
                 ],
             },
             { name: "data_vencimento", label: "Vencimento", type: "date", required: true },
-            { name: "pessoa_id", label: "Pessoa", type: "select", source: "pessoas" },
+            { name: "competencia", label: "Competência", required: true },
+            { name: "pessoa_id", label: "Cliente", type: "select", source: "pessoas" },
             { name: "banco_id", label: "Instituição", type: "select", source: "bancos" },
             { name: "parcelas", label: "Número de parcelas", type: "number", required: true, wide: true },
         ],
@@ -30,6 +32,8 @@ export const resources: Resource[] = [
             ["pessoa_id", "Pessoa"],
             ["tipo", "Tipo"],
             ["data_vencimento", "Vencimento"],
+            ["competencia", "Competência"],
+            ["plano_conta_id", "Plano de contas"],
             ["valor", "Valor"],
             ["status", "Status"],
         ],
@@ -98,6 +102,15 @@ export const resources: Resource[] = [
             ["descricao", "Banco"],
             ["ativo", "Ativo"],
         ],
+    },
+    {
+        key: "planos",
+        title: "Planos de contas",
+        endpoint: "/planos-contas",
+        singular: "plano de contas",
+        icon: "grid",
+        fields: [{ name: "descricao", label: "Nome", required: true, wide: true }],
+        columns: [["descricao", "Plano de contas"]],
     },
     {
         key: "movimentacoes",
@@ -172,6 +185,7 @@ export const pagePaths: Record<string, string> = {
     pessoas: "/pessoas",
     formas: "/formas-pagamento",
     bancos: "/bancos",
+    planos: "/planos-contas",
     movimentacoes: "/movimentacoes",
     recebimentos: "/recebimentos",
 };

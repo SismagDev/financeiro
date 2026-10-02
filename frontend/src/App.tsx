@@ -3,6 +3,7 @@ import { Icon } from "./components/Icon";
 import { pageFromPath, pagePaths, resources } from "./data/resources";
 import type { Company, Row, User } from "./types";
 import "./App.css";
+import { competenceDate, competenceLabel } from "./utils/dates";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const EMPTY_ROWS: Row[] = [];
@@ -32,6 +33,7 @@ async function api(path: string, options: RequestInit = {}, empresaId?: string) 
 
 function AuthScreen({ onLogin }: { onLogin: (user: User) => void }) {
     const [register, setRegister] = useState(false);
+    const [revealPassword, setRevealPassword] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
@@ -155,14 +157,14 @@ function AuthScreen({ onLogin }: { onLogin: (user: User) => void }) {
                     </label>
                     <label>
                         Senha
-                        <input
+                        <span className="password-field"><input
                             name="password"
-                            type="password"
+                            type={revealPassword ? "text" : "password"}
                             autoComplete={register ? "new-password" : "current-password"}
                             placeholder="Mínimo de 6 caracteres"
                             required
                             minLength={6}
-                        />
+                        /><button type="button" className="password-toggle" aria-label={revealPassword ? "Ocultar senha" : "Revelar senha"} aria-pressed={revealPassword} onClick={() => setRevealPassword(!revealPassword)}><Icon name={revealPassword ? "eyeOff" : "eye"} /></button></span>
                     </label>
                     {error && <div className="inline-error">{error}</div>}
                     {notice && <div className="inline-success">{notice}</div>}
@@ -357,11 +359,13 @@ function App() {
         if (!company || !resource) return;
         setBusy(true);
         const form = new FormData(event.currentTarget);
-        const darBaixa = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "baixar";
+        const darBaixa = modal !== "edit" && resource.key === "lancamentos" && Boolean(form.get("forma_pagamento_id"));
         const payload: Row = {};
         for (const field of resource.fields) {
             const value = form.get(field.name);
             if (field.type === "checkbox") payload[field.name] = value === "on";
+            else if (field.name === "competencia" && typeof value === "string") payload[field.name] = competenceDate(value);
+            else if ((field.name === "plano_conta_id" || field.name === "pessoa_id") && value === "" && modal === "edit") payload[field.name] = null;
             else if (typeof value === "string" && value !== "")
                 payload[field.name] = field.type === "number" ? Number(value) : value;
         }
@@ -379,14 +383,13 @@ function App() {
                 !editing && resource.key === "lancamentos" && parcelas > 1
                     ? "/lancamentos/parcelado"
                     : `${resource.endpoint}${editing ? `/${selectedRow.id}` : ""}`;
-            if (darBaixa && (!form.get("forma_pagamento_id") || editing || resource.key !== "lancamentos"))
-                throw new Error("Selecione uma forma de pagamento para dar baixa.");
-            const created = await api(
+            await api(
                 endpoint,
                 {
                     method: editing ? "PATCH" : "POST",
                     body: JSON.stringify({
                         ...payload,
+                        ...(darBaixa ? { forma_pagamento_id: form.get("forma_pagamento_id") } : {}),
                         ...(!editing && resource.key === "lancamentos" && parcelas > 1
                             ? {
                                   parcelas,
@@ -398,28 +401,6 @@ function App() {
                 },
                 company.id,
             );
-            if (darBaixa) {
-                const ids = Array.isArray(created.ids) ? created.ids : [created.id];
-                const totalCentavos = Math.round(
-                    Number(payload.valor || 0) * (modoValor === "parcela" ? parcelas : 1) * 100,
-                );
-                const valorBase = Math.floor(totalCentavos / ids.length);
-                await Promise.all(
-                    ids.map((id: string, index: number) =>
-                        api(
-                            `/lancamentos/${id}/baixar`,
-                            {
-                                method: "POST",
-                                body: JSON.stringify({
-                                    forma_pagamento_id: form.get("forma_pagamento_id"),
-                                    valor: (valorBase + (index < totalCentavos % ids.length ? 1 : 0)) / 100,
-                                }),
-                            },
-                            company.id,
-                        ),
-                    ),
-                );
-            }
             notify(
                 editing
                     ? "Alterações salvas."
@@ -493,6 +474,15 @@ function App() {
         setCashRows(cash.data || []);
     }
 
+    async function createPerson(values: Row): Promise<Row> {
+        if (!company) throw new Error("Selecione uma empresa.");
+        const result = await api("/pessoas", { method: "POST", body: JSON.stringify(values) }, company.id);
+        const row = { ...values, id: result.id };
+        setLookups(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
+        setDashboardData(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
+        return row;
+    }
+
     async function removeRow(row: Row) {
         if (!company || !resource || !window.confirm(`Excluir este registro de ${resource.singular}?`))
             return;
@@ -554,6 +544,7 @@ function App() {
         { key: "caixa", title: "Gestão de caixa", icon: "wallet", section: "FINANCEIRO" },
         { key: "formas", title: "Formas de pagamento", icon: "card", section: "CADASTROS" },
         { key: "bancos", title: "Bancos", icon: "bank", section: "CADASTROS" },
+        { key: "planos", title: "Planos de contas", icon: "grid", section: "CADASTROS" },
         { key: "movimentacoes", title: "Movimentações", icon: "arrowDown", section: "FINANCEIRO" },
         { key: "recebimentos", title: "Recebimentos", icon: "arrowUp", section: "FINANCEIRO" },
     ];
@@ -593,10 +584,13 @@ function App() {
     );
 
     function displayValue(key: string, value: Row[string]) {
+        if (key === "competencia") return competenceLabel(value) || "—";
         if (value === null || value === undefined || value === "") return "—";
         if (key.includes("_id")) {
             const source =
-                key === "pessoa_id"
+                key === "plano_conta_id"
+                    ? "planos"
+                    : key === "pessoa_id"
                     ? "pessoas"
                     : key === "banco_id"
                       ? "bancos"
@@ -1034,7 +1028,9 @@ function App() {
                                 <form onSubmit={saveRecord} className="record-form">
                                     {resource && (
                                         <RecordFormFields
+                                            key={String(selectedRow?.id || resource.key) + modal}
                                             fields={resource.fields}
+                                            onCreatePerson={createPerson}
                                             selectedRow={selectedRow}
                                             lookups={lookups}
                                             editing={modal === "edit"}
@@ -1071,25 +1067,13 @@ function App() {
                                         </button>
                                         <button
                                             className="button button-primary"
-                                            name="acao"
-                                            value="cadastrar"
                                             disabled={busy}
                                         >
                                             {busy && <span className="spinner" />}
                                             {modal === "edit" ? "Salvar alterações" : "Cadastrar"}{" "}
                                             <span>→</span>
                                         </button>
-                                        {!selectedRow && resource?.key === "lancamentos" && (
-                                            <button
-                                                className="button button-primary"
-                                                name="acao"
-                                                value="baixar"
-                                                disabled={busy}
-                                            >
-                                                {busy && <span className="spinner" />}Cadastrar e dar baixa{" "}
-                                                <span>→</span>
-                                            </button>
-                                        )}
+
                                     </div>
                                 </form>
                             )}

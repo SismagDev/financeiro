@@ -930,6 +930,7 @@ function App() {
                                     <Icon name="close" />
                                 </button>
                             </div>
+                            <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
                             {modal === "company-edit" ? (
                                 <form onSubmit={updateCompany} className="record-form">
                                     <label className="form-field full-field">
@@ -1077,6 +1078,7 @@ function App() {
                                     </div>
                                 </form>
                             )}
+                            </Suspense>
                         </section>
                     </div>
                 )}

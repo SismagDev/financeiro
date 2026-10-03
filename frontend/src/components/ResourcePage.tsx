@@ -24,6 +24,8 @@ type Props = {
     onEdit: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
+    onRemoveSettlement: (row: Row) => void;
+    hasSettlements: (row: Row) => boolean;
     lancamentoFilters?: Filters;
     onLancamentoFiltersChange?: (filters: Filters) => void;
 };
@@ -41,6 +43,8 @@ export function ResourcePage({
     onEdit,
     onDelete,
     onSettle,
+    onRemoveSettlement,
+    hasSettlements,
     lancamentoFilters,
     onLancamentoFiltersChange,
 }: Props) {
@@ -98,7 +102,7 @@ export function ResourcePage({
                     <p>Consulte e organize os registros da sua empresa.</p>
                 </div>
                 <button className="button button-primary" onClick={onCreate}>
-                    <Icon name="plus" size={18} /> Novo {resource.singular}
+                    <Icon name="plus" size={18} /> {showSettlement ? "Nova" : "Novo"} {resource.singular}
                 </button>
             </div>
             <section className="panel list-panel">
@@ -257,7 +261,7 @@ export function ResourcePage({
                                             )}
                                         </td>
                                     ))}
-                                    <td className="row-actions">
+                                    <td className={`row-actions ${showSettlement ? "launch-actions" : ""}`}>
                                         {showSettlement &&
                                             row.status !== "pago" &&
                                             row.status !== "cancelado" && (
@@ -274,6 +278,11 @@ export function ResourcePage({
                                                     <span>Dar baixa</span>
                                                 </button>
                                             )}
+                                        {showSettlement && hasSettlements(row) && (
+                                            <button className="settle-row-button" title="Remover baixa" onClick={() => onRemoveSettlement(row)}>
+                                                <Icon name="trash" size={16} /><span>Remover baixa</span>
+                                            </button>
+                                        )}
                                         <button title="Editar" onClick={() => onEdit(row)}>
                                             <Icon name="edit" size={16} />
                                         </button>
@@ -302,7 +311,7 @@ export function ResourcePage({
                                         ? "Tente buscar por outro termo."
                                         : "Adicione seu primeiro registro para manter tudo organizado."
                                 }
-                                action={search ? undefined : `Novo ${resource.singular}`}
+                                action={search ? undefined : `${showSettlement ? "Nova" : "Novo"} ${resource.singular}`}
                                 onAction={onCreate}
                             />
                         )
@@ -311,7 +320,7 @@ export function ResourcePage({
             </section>
             {showSettlement && (
                 <section className="launch-summary">
-                    <span>Resumo dos lançamentos filtrados</span>
+                    <span>Resumo das contas filtradas</span>
                     <div>
                         <small>Total a pagar</small>
                         <b>{formatValue("valor", totals.pagar)}</b>

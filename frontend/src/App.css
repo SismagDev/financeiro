@@ -2661,3 +2661,21 @@ tbody td:first-child b {
     .inline-client { padding: 10px; }
     .table-wrap { max-width: 100%; }
 }
+
+/* Contraste financeiro nas telas de contas, visão geral e caixa. */
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .income-row td { background: #e0f2e5; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .expense-row td { background: #fce2e2; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .income-row td:first-child { border-left-color: #218447; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .expense-row td:first-child { border-left-color: #c53333; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .income-row:hover td { background: #cce9d5 !important; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .expense-row:hover td { background: #f7cccc !important; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .type-income { color: #176b36; font-weight: 700; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa) .type-expense { color: #a52222; font-weight: 700; }
+.page-dashboard :is(.bar-in, .legend-in, .progress-green) { background: #218447; }
+.page-dashboard :is(.bar-out, .legend-out, .progress-peach) { background: #c53333; }
+.page-dashboard .icon-green { background: #d8efdf; color: #176b36; }
+.page-dashboard .icon-peach { background: #f9dada; color: #a52222; }
+.page-lancamentos .launch-actions { gap: 8px; padding-right: 24px; padding-left: 16px; }
+.page-lancamentos .launch-actions button { flex-shrink: 0; white-space: nowrap; }
+.page-loading { min-height: 260px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #536159; }
+.settlement-table { min-width: 420px; }

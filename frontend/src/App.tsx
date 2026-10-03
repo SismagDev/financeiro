@@ -8,13 +8,16 @@ import { competenceDate, competenceLabel } from "./utils/dates";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const EMPTY_ROWS: Row[] = [];
 type Toast = { message: string; type: "success" | "error" };
-const DashboardPage = lazy(() =>
-    import("./pages/DashboardPage").then(({ DashboardPage }) => ({ default: DashboardPage })),
-);
-const CashPage = lazy(() => import("./pages/CashPage").then(({ CashPage }) => ({ default: CashPage })));
-const ResourcePage = lazy(() =>
-    import("./components/ResourcePage").then(({ ResourcePage }) => ({ default: ResourcePage })),
-);
+const loadDashboard = () => import("./pages/DashboardPage").then(({ DashboardPage }) => ({ default: DashboardPage }));
+const loadCash = () => import("./pages/CashPage").then(({ CashPage }) => ({ default: CashPage }));
+const loadResource = () => import("./components/ResourcePage").then(({ ResourcePage }) => ({ default: ResourcePage }));
+const DashboardPage = lazy(loadDashboard);
+const CashPage = lazy(loadCash);
+const ResourcePage = lazy(loadResource);
+function preloadPage(page: string) {
+    const load = page === "dashboard" ? loadDashboard : page === "caixa" ? loadCash : loadResource;
+    void load().catch(() => { /* A navegação poderá tentar carregar novamente. */ });
+}
 const RecordFormFields = lazy(() =>
     import("./components/RecordFormFields").then(({ RecordFormFields }) => ({ default: RecordFormFields })),
 );
@@ -208,7 +211,7 @@ function App() {
     const [cashInitial, setCashInitial] = useState(0);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | null>(null);
+    const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "unsettle" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     const [search, setSearch] = useState("");
     const currentMonth = new Date();
@@ -235,6 +238,7 @@ function App() {
     const [notificationsOpen, setNotificationsOpen] = useState(false);
 
     function navigate(next: string) {
+        preloadPage(next);
         const path = pagePaths[next] || "/";
         if (window.location.pathname !== path) window.history.pushState({}, "", path);
         setPage(pagePaths[next] ? next : "dashboard");
@@ -456,6 +460,20 @@ function App() {
         }
     }
 
+    async function removeSettlement(row: Row) {
+        if (!company || !selectedRow || busy || !window.confirm("Remover esta baixa? O saldo da conta será atualizado.")) return;
+        const key = selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes";
+        setBusy(true);
+        try {
+            await api(`/${key}/${row.id}`, { method: "DELETE" }, company.id);
+            setDashboardData(current => ({ ...current, [key]: (current[key] || []).filter(item => item.id !== row.id) }));
+            await reloadCurrent();
+            notify("Baixa removida e saldo atualizado.");
+        } catch (e) {
+            notify(e instanceof Error ? e.message : "Não foi possível remover a baixa.", "error");
+        } finally { setBusy(false); }
+    }
+
     async function reloadCurrent() {
         if (!company) return;
         const results = await Promise.all(
@@ -539,7 +557,7 @@ function App() {
         );
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
-        { key: "lancamentos", title: "Lançamentos", icon: "arrows", section: "FINANCEIRO" },
+        { key: "lancamentos", title: "Contas", icon: "arrows", section: "FINANCEIRO" },
         { key: "pessoas", title: "Pessoas", icon: "users", section: "CADASTROS" },
         { key: "caixa", title: "Gestão de caixa", icon: "wallet", section: "FINANCEIRO" },
         { key: "formas", title: "Formas de pagamento", icon: "card", section: "CADASTROS" },
@@ -624,14 +642,7 @@ function App() {
     }
 
     return (
-        <Suspense
-            fallback={
-                <div className="full-loader">
-                    <span className="spinner spinner-large" />
-                    <span>Carregando área interna...</span>
-                </div>
-            }
-        >
+        <>
             <div className="app-shell">
                 <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
                     <div className="sidebar-brand">
@@ -680,6 +691,8 @@ function App() {
                                         <button
                                             key={item.key}
                                             className={`nav-item ${page === item.key ? "active" : ""}`}
+                                            onMouseEnter={() => preloadPage(item.key)}
+                                            onFocus={() => preloadPage(item.key)}
                                             onClick={() => {
                                                 navigate(item.key);
                                                 setSearch("");
@@ -777,7 +790,7 @@ function App() {
                                         {overdueRows.length ? (
                                             <>
                                                 <p className="notification-caption">
-                                                    Lançamentos vencidos que precisam de atenção
+                                                    Contas vencidas que precisam de atenção
                                                 </p>
                                                 {overdueRows.slice(0, 5).map((item) => (
                                                     <button
@@ -821,7 +834,7 @@ function App() {
                                                     <Icon name="check" />
                                                 </span>
                                                 <b>Tudo em dia</b>
-                                                <small>Você não tem lançamentos vencidos.</small>
+                                                <small>Você não tem contas vencidas.</small>
                                             </div>
                                         )}
                                     </section>
@@ -833,7 +846,8 @@ function App() {
                             </span>
                         </div>
                     </header>
-                    <div className="page-content">
+                    <div className={`page-content page-${page}`}>
+                        <Suspense fallback={<section className="panel page-loading" role="status"><span className="spinner" /><span>Carregando página...</span></section>}>
                         {company.licenca_status === "vencida" ? (
                             <section className="panel license-expired"><span className="eyebrow muted">LICENÇA VENCIDA</span><h2>Esta empresa está com a licença expirada.</h2><p>Solicite a renovação a um administrador para voltar a utilizar os recursos financeiros.</p></section>
                         ) : page === "dashboard" ? (
@@ -882,12 +896,15 @@ function App() {
                                 onLancamentoFiltersChange={
                                     page === "lancamentos" ? setLancamentoFilters : undefined
                                 }
+                                onRemoveSettlement={(row) => { setSelectedRow(row); setModal("unsettle"); }}
+                                hasSettlements={(row) => (dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || []).some(item => item.lancamento_id === row.id)}
                                 onSettle={(row) => {
                                     setSelectedRow(row);
                                     setModal("settle");
                                 }}
                             />
                         ) : null}
+                        </Suspense>
                     </div>
                 </main>
 
@@ -906,8 +923,10 @@ function App() {
                                             ? "NOVA EMPRESA"
                                             : modal === "company-edit"
                                               ? "EDITAR EMPRESA"
+                                              : modal === "unsettle"
+                                              ? "BAIXAS DA CONTA"
                                               : modal === "settle"
-                                              ? "BAIXA DO LANÇAMENTO"
+                                              ? "BAIXA DA CONTA"
                                               : modal === "edit"
                                                 ? "EDITAR REGISTRO"
                                                 : "NOVO CADASTRO"}
@@ -917,13 +936,15 @@ function App() {
                                             ? "Cadastre sua empresa"
                                             : modal === "company-edit"
                                               ? "Editar empresa"
+                                              : modal === "unsettle"
+                                              ? "Remover baixa"
                                               : modal === "settle"
                                               ? selectedRow?.tipo === "receber"
                                                   ? "Registrar recebimento"
                                                   : "Registrar pagamento"
                                               : modal === "edit"
                                                 ? `Editar ${resource?.singular}`
-                                                : `Novo ${resource?.singular}`}
+                                                : `${resource?.key === "lancamentos" ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
                                 <button className="icon-button" onClick={() => setModal(null)}>
@@ -931,7 +952,30 @@ function App() {
                                 </button>
                             </div>
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
-                            {modal === "company-edit" ? (
+                            {modal === "unsettle" && selectedRow ? (
+                                <div className="record-form">
+                                    <p><b>{String(selectedRow.descricao)}</b></p>
+                                    <div className="table-wrap">
+                                        <table className="data-table settlement-table">
+                                            <thead><tr><th>Data</th><th>Forma de pagamento</th><th>Valor</th><th aria-label="Ações" /></tr></thead>
+                                            <tbody>
+                                                {(dashboardData[selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [])
+                                                    .filter(item => item.lancamento_id === selectedRow.id)
+                                                    .map(item => (
+                                                        <tr key={String(item.id)}>
+                                                            <td>{displayValue("data_vencimento", item.data_recebimento || item.data_movimentacao)}</td>
+                                                            <td>{displayValue("forma_pagamento_id", item.forma_pagamento_id)}</td>
+                                                            <td>{displayValue("valor", item.valor)}</td>
+                                                            <td><button type="button" className="icon-button" title="Remover esta baixa" aria-label="Remover esta baixa" disabled={busy} onClick={() => removeSettlement(item)}><Icon name="trash" size={16} /></button></td>
+                                                        </tr>
+                                                    ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {!(dashboardData[selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes"] || []).some(item => item.lancamento_id === selectedRow.id) && <p role="status">Esta conta não possui baixas.</p>}
+                                    <div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={() => setModal(null)}>Fechar</button></div>
+                                </div>
+                            ) : modal === "company-edit" ? (
                                 <form onSubmit={updateCompany} className="record-form">
                                     <label className="form-field full-field">
                                         Nome da empresa
@@ -1094,7 +1138,7 @@ function App() {
                     </div>
                 )}
             </div>
-        </Suspense>
+        </>
     );
 }
 

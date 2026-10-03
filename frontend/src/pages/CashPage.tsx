@@ -94,7 +94,6 @@ export function CashPage({
                                     <td>{date(row.data)}</td>
                                     <td>
                                         <b>{String(row.descricao)}</b>
-                                        <span className={`cash-category type-label ${row.categoria === "receber" ? "type-income" : "type-expense"}`}>{row.categoria === "receber" ? "Receber" : row.categoria === "pagar" ? "Pagar" : String(row.categoria || "")}</span>
                                     </td>
                                     <td>{row.tipo}</td>
                                     <td>{String(row.forma_pagamento || "—")}</td>
@@ -114,7 +113,7 @@ export function CashPage({
                     {!rows.length && (
                         <div className="empty-state">
                             <b>Nenhuma movimentação no período</b>
-                            <p>Registre uma baixa em um lançamento para acompanhar o caixa.</p>
+                            <p>Registre uma baixa em uma conta para acompanhar o caixa.</p>
                         </div>
                     )}
                 </div>

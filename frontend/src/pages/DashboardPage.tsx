@@ -69,7 +69,7 @@ export function DashboardPage({
                     <p>Aqui está o resumo financeiro da sua empresa.</p>
                 </div>
                 <button className="button button-primary" onClick={() => onCreate("lancamentos")}>
-                    <Icon name="plus" size={18} /> Novo lançamento
+                    <Icon name="plus" size={18} /> Nova conta
                 </button>
             </div>
 
@@ -220,7 +220,7 @@ export function DashboardPage({
                     </div>
                     <div className="quick-list">
                         {[
-                            ["lancamentos", "Novo lançamento", "Registre uma entrada ou saída", "arrows"],
+                            ["lancamentos", "Nova conta", "Registre uma entrada ou saída", "arrows"],
                             ["pessoas", "Cadastrar pessoa", "Cliente ou fornecedor", "users"],
                             ["caixa", "Ver gestão de caixa", "Acompanhe seu saldo em ordem", "wallet"],
                             ["recebimentos", "Registrar recebimento", "Dê baixa em um valor", "arrowDown"],
@@ -247,7 +247,7 @@ export function DashboardPage({
             <section className="panel recent-panel">
                 <div className="panel-heading">
                     <div>
-                        <h2>Últimos lançamentos</h2>
+                        <h2>Últimas contas</h2>
                         <p>Movimentações recentes da empresa</p>
                     </div>
                     <button className="link-button" onClick={() => onNavigate("lancamentos")}>
@@ -279,7 +279,7 @@ export function DashboardPage({
                                                 size={15}
                                             />
                                         </span>
-                                        <b>{String(row.descricao || "Lançamento")}</b>
+                                        <b>{String(row.descricao || "Conta")}</b>
                                         {Number(row.total_parcelas) > 1 && (
                                             <small className="installment-tag">
                                                 Parcela {row.numero_parcela}/{row.total_parcelas}
@@ -308,8 +308,8 @@ export function DashboardPage({
                     {!rows.length && (
                         <EmptyState
                             title="Seu fluxo começa aqui"
-                            text="Cadastre o primeiro lançamento para acompanhar o movimento financeiro."
-                            action="Criar lançamento"
+                            text="Cadastre a primeira conta para acompanhar o movimento financeiro."
+                            action="Criar conta"
                             onAction={() => onCreate("lancamentos")}
                         />
                     )}

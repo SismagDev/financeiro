@@ -3,9 +3,9 @@ import type { Resource } from "../types";
 export const resources: Resource[] = [
     {
         key: "lancamentos",
-        title: "Lançamentos",
+        title: "Contas",
         endpoint: "/lancamentos",
-        singular: "lançamento",
+        singular: "conta",
         icon: "arrows",
         fields: [
             { name: "descricao", label: "Descrição", required: true, wide: true },
@@ -121,7 +121,7 @@ export const resources: Resource[] = [
         fields: [
             {
                 name: "lancamento_id",
-                label: "Lançamento",
+                label: "Conta",
                 type: "select",
                 source: "lancamentos",
                 required: true,
@@ -138,7 +138,7 @@ export const resources: Resource[] = [
             { name: "data_movimentacao", label: "Data", type: "date" },
         ],
         columns: [
-            ["lancamento_id", "Lançamento"],
+            ["lancamento_id", "Conta"],
             ["forma_pagamento_id", "Forma"],
             ["data_movimentacao", "Data"],
             ["valor", "Valor"],
@@ -153,7 +153,7 @@ export const resources: Resource[] = [
         fields: [
             {
                 name: "lancamento_id",
-                label: "Lançamento",
+                label: "Conta",
                 type: "select",
                 source: "lancamentos",
                 required: true,
@@ -170,7 +170,7 @@ export const resources: Resource[] = [
             { name: "data_recebimento", label: "Data", type: "date" },
         ],
         columns: [
-            ["lancamento_id", "Lançamento"],
+            ["lancamento_id", "Conta"],
             ["forma_pagamento_id", "Forma"],
             ["data_recebimento", "Data"],
             ["valor", "Valor"],

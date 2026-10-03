@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { usePagination } from "../hooks/usePagination";
+import { Pagination } from "./Pagination";
 import { Icon } from "./Icon";
 import { EmptyState } from "./EmptyState";
 import { Status } from "./Status";
@@ -11,6 +13,7 @@ type Filters = {
     mostrarPagos: boolean;
     tipo: "todos" | "pagar" | "receber";
 };
+type DateFilters = Pick<Filters, "dataInicial" | "dataFinal">;
 type Props = {
     resource: Resource;
     company: Company;
@@ -28,6 +31,8 @@ type Props = {
     hasSettlements: (row: Row) => boolean;
     lancamentoFilters?: Filters;
     onLancamentoFiltersChange?: (filters: Filters) => void;
+    dateFilters?: DateFilters;
+    onDateFiltersChange?: (filters: DateFilters) => void;
 };
 
 export function ResourcePage({
@@ -47,8 +52,12 @@ export function ResourcePage({
     hasSettlements,
     lancamentoFilters,
     onLancamentoFiltersChange,
+    dateFilters,
+    onDateFiltersChange,
 }: Props) {
     const showSettlement = resource.key === "lancamentos";
+    const invalidPeriod = Boolean(dateFilters?.dataInicial && dateFilters.dataFinal && dateFilters.dataInicial > dateFilters.dataFinal);
+    const hasDateFilter = Boolean(dateFilters?.dataInicial || dateFilters?.dataFinal);
     const defaultSort =
         resource.key === "lancamentos"
             ? "data_vencimento"
@@ -72,6 +81,10 @@ export function ResourcePage({
             }),
         [visibleRows, sort],
     );
+    const paginated = ["movimentacoes", "recebimentos", "lancamentos", "pessoas"].includes(resource.key);
+    const { page, pageCount, pageRows, onPageChange } = usePagination(sortedRows, JSON.stringify({
+        resource: resource.key, company: company.id, search, lancamentoFilters, dateFilters, sort,
+    }));
     const totals = visibleRows.reduce<{ pagar: number; receber: number }>(
         (acc, row) => ({
             pagar:
@@ -122,6 +135,42 @@ export function ResourcePage({
                         <Icon name="close" size={16} /> Limpar busca
                     </button>
                 </div>
+                {dateFilters && onDateFiltersChange && (
+                    <div className="launch-filters settlement-filters">
+                        <div className="launch-filters-fields">
+                            <label>
+                                Data inicial
+                                <input
+                                    type="date"
+                                    value={dateFilters.dataInicial}
+                                    max={dateFilters.dataFinal || undefined}
+                                    aria-invalid={invalidPeriod}
+                                    aria-describedby={invalidPeriod ? "settlement-period-error" : undefined}
+                                    onChange={(event) => onDateFiltersChange({ ...dateFilters, dataInicial: event.target.value })}
+                                />
+                            </label>
+                            <label>
+                                Data final
+                                <input
+                                    type="date"
+                                    value={dateFilters.dataFinal}
+                                    min={dateFilters.dataInicial || undefined}
+                                    aria-invalid={invalidPeriod}
+                                    aria-describedby={invalidPeriod ? "settlement-period-error" : undefined}
+                                    onChange={(event) => onDateFiltersChange({ ...dateFilters, dataFinal: event.target.value })}
+                                />
+                            </label>
+                        </div>
+                        {invalidPeriod && (
+                            <p id="settlement-period-error" role="alert">
+                                A data inicial não pode ser posterior à data final. Corrija o período para aplicar o filtro.
+                            </p>
+                        )}
+                        <button className="filter-button" onClick={() => onDateFiltersChange({ dataInicial: "", dataFinal: "" })}>
+                            <Icon name="close" size={16} /> Limpar período
+                        </button>
+                    </div>
+                )}
                 {showSettlement && lancamentoFilters && onLancamentoFiltersChange && (
                     <div className="launch-filters">
                         <div className="launch-filters-fields">
@@ -223,7 +272,7 @@ export function ResourcePage({
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedRows.map((row, index) => (
+                            {(paginated ? pageRows : sortedRows).map((row, index) => (
                                 <tr
                                     className={
                                         showSettlement
@@ -302,21 +351,24 @@ export function ResourcePage({
                         !visibleRows.length && (
                             <EmptyState
                                 title={
-                                    search
+                                    search || hasDateFilter
                                         ? "Nenhum resultado"
                                         : `Ainda não há ${resource.title.toLowerCase()}`
                                 }
                                 text={
-                                    search
-                                        ? "Tente buscar por outro termo."
+                                    search || hasDateFilter
+                                        ? hasDateFilter ? "Tente ajustar os filtros ou buscar por outro termo." : "Tente buscar por outro termo."
                                         : "Adicione seu primeiro registro para manter tudo organizado."
                                 }
-                                action={search ? undefined : `${showSettlement ? "Nova" : "Novo"} ${resource.singular}`}
+                                action={search || hasDateFilter ? undefined : `${showSettlement ? "Nova" : "Novo"} ${resource.singular}`}
                                 onAction={onCreate}
                             />
                         )
                     )}
                 </div>
+                {paginated && (
+                    <Pagination total={visibleRows.length} page={page} pageCount={pageCount} onPageChange={onPageChange} />
+                )}
             </section>
             {showSettlement && (
                 <section className="launch-summary">

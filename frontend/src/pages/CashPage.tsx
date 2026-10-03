@@ -1,3 +1,5 @@
+import { Pagination } from "../components/Pagination";
+import { usePagination } from "../hooks/usePagination";
 import type { Row } from "../types";
 
 type CashRow = Row & {
@@ -26,6 +28,7 @@ export function CashPage({
     onInitialChange: (value: number) => void;
     onRefresh: () => void;
 }) {
+    const { page, pageCount, pageRows, onPageChange } = usePagination(rows, String(initial));
     const balance = rows.length ? rows[rows.length - 1].saldo_depois : initial;
     return (
         <>
@@ -86,7 +89,7 @@ export function CashPage({
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((row) => (
+                            {pageRows.map((row) => (
                                 <tr
                                     key={String(row.id)}
                                     className={row.tipo === "Entrada" ? "income-row" : "expense-row"}
@@ -117,6 +120,7 @@ export function CashPage({
                         </div>
                     )}
                 </div>
+                <Pagination total={rows.length} page={page} pageCount={pageCount} onPageChange={onPageChange} />
             </section>
         </>
     );

@@ -2251,6 +2251,21 @@ tbody td:first-child b {
     grid-template-columns: 1.8fr 1fr 1fr 1fr;
     gap: 12px;
 }
+.settlement-filters .launch-filters-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.settlement-filters .filter-button {
+    align-self: flex-start;
+    margin-top: 12px;
+    font-size: 12px;
+    width: auto;
+    min-height: 42px;
+    padding: 8px 12px;
+}
+.settlement-filters [role="alert"] {
+    color: #a12b2b;
+    font-size: 14px;
+}
 .launch-filters-fields label,
 .launch-filters-fields input,
 .launch-filters-fields select {
@@ -2653,7 +2668,7 @@ tbody td:first-child b {
 @media (max-width: 600px) {
     body { min-width: 0; }
     .main-content, .page-content, .list-panel { min-width: 0; }
-    .launch-filters-fields { grid-template-columns: minmax(0, 1fr); }
+    .launch-filters-fields, .settlement-filters .launch-filters-fields { grid-template-columns: minmax(0, 1fr); }
     .launch-filters-fields input, .launch-filters-fields select { min-width: 0; height: 42px; padding: 8px; }
     .modal-card { max-height: 90dvh; }
     .modal-actions { flex-wrap: wrap; }
@@ -2679,3 +2694,28 @@ tbody td:first-child b {
 .page-lancamentos .launch-actions button { flex-shrink: 0; white-space: nowrap; }
 .page-loading { min-height: 260px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #536159; }
 .settlement-table { min-width: 420px; }
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 16px 0;
+    border-top: 1px solid #edf0ed;
+    color: #535c56;
+    font-size: 13px;
+}
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.pagination .button { min-height: 42px; }
+.pagination .button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 600px) {
+    .pagination { flex-direction: column; align-items: stretch; }
+    .pagination-controls { justify-content: space-between; gap: 6px; }
+    .pagination .button { padding: 8px; font-size: 12px; }
+}

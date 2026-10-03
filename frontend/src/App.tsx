@@ -214,6 +214,10 @@ function App() {
     const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "unsettle" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     const [search, setSearch] = useState("");
+    const [settlementFilters, setSettlementFilters] = useState({
+        movimentacoes: { dataInicial: "", dataFinal: "" },
+        recebimentos: { dataInicial: "", dataFinal: "" },
+    });
     const currentMonth = new Date();
     const [lancamentoFilters, setLancamentoFilters] = useState<{
         cliente: string;
@@ -303,10 +307,18 @@ function App() {
 
     const resource = resources.find((item) => item.key === page);
     const currentRows = dashboardData[page] || EMPTY_ROWS;
+    const settlementPage = page === "movimentacoes" || page === "recebimentos" ? page : null;
+    const dateFilters = settlementPage ? settlementFilters[settlementPage] : undefined;
     const filteredRows = useMemo(
         () =>
             currentRows.filter((row) => {
                 if (!JSON.stringify(row).toLowerCase().includes(search.toLowerCase())) return false;
+                if (dateFilters) {
+                    if (dateFilters.dataInicial && dateFilters.dataFinal && dateFilters.dataInicial > dateFilters.dataFinal) return true;
+                    const day = String(row[page === "movimentacoes" ? "data_movimentacao" : "data_recebimento"] || "").slice(0, 10);
+                    return (!dateFilters.dataInicial || day >= dateFilters.dataInicial) &&
+                        (!dateFilters.dataFinal || day <= dateFilters.dataFinal);
+                }
                 if (page !== "lancamentos") return true;
                 const pessoa = (lookups.pessoas || []).find((item) => item.id === row.pessoa_id);
                 const cliente = String(pessoa?.nome || "").toLowerCase();
@@ -320,7 +332,7 @@ function App() {
                     (!lancamentoFilters.dataFinal || vencimento <= lancamentoFilters.dataFinal)
                 );
             }),
-        [currentRows, search, page, lookups.pessoas, lancamentoFilters],
+        [currentRows, search, page, lookups.pessoas, lancamentoFilters, dateFilters],
     );
     const notify = (message: string, type: Toast["type"] = "success") => {
         setToast({ message, type });
@@ -868,6 +880,7 @@ function App() {
                             />
                         ) : page === "caixa" ? (
                             <CashPage
+                                key={company.id}
                                 rows={cashRows as never}
                                 initial={cashInitial}
                                 onInitialChange={setCashInitial}
@@ -883,6 +896,11 @@ function App() {
                                 search={search}
                                 formatValue={displayValue}
                                 onSearch={setSearch}
+                                dateFilters={dateFilters}
+                                onDateFiltersChange={settlementPage ? (filters) => setSettlementFilters((current) => ({
+                                    ...current,
+                                    [settlementPage]: filters,
+                                })) : undefined}
                                 onCreate={() => {
                                     setSelectedRow(null);
                                     setModal("create");

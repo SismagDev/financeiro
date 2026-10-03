@@ -2701,7 +2701,7 @@ tbody td:first-child b {
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    padding: 16px 0;
+    padding: 6px 0;
     border-top: 1px solid #edf0ed;
     color: #535c56;
     font-size: 13px;
@@ -2715,7 +2715,7 @@ tbody td:first-child b {
 .pagination .button { min-height: 42px; }
 .pagination .button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 600px) {
-    .pagination { flex-direction: column; align-items: stretch; }
+    .pagination { flex-direction: column; align-items: stretch; gap: 6px; }
     .pagination-controls { justify-content: space-between; gap: 6px; }
     .pagination .button { padding: 8px; font-size: 12px; }
 }

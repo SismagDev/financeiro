@@ -26,11 +26,13 @@ const tipo = z.enum(["pagar", "receber"]);
 const status = z.enum(["pendente", "parcial", "pago", "cancelado"]);
 const data = z.string().date();
 const valor = z.coerce.number().positive();
+const numDoc = z.string().trim().max(100).transform(value => value || null).nullable().optional();
 const schema = {
     table: "lancamentos",
     fields: [
         "numero",
         "descricao",
+        "num_doc",
         "observacoes",
         "valor",
         "tipo",
@@ -47,6 +49,7 @@ const schema = {
     searchFields: ["descricao"],
     create: z.object({
         descricao: text(),
+        num_doc: numDoc,
         observacoes: z.string().trim().max(5000).nullable().optional(),
         valor,
         tipo,
@@ -59,6 +62,7 @@ const schema = {
     }).strict(),
     patch: strictObject({
         descricao: optionalText(),
+        num_doc: numDoc,
         observacoes: z.string().trim().max(5000).nullable().optional(),
         valor: optionalMoney,
         tipo: tipo.optional(),

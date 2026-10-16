@@ -4,6 +4,7 @@ import { createSettlement, SettlementError } from "./settlement.service";
 
 export type LaunchInput = {
     observacoes?: string | null;
+    num_doc?: string | null;
     descricao: string; valor: number; tipo: "pagar" | "receber";
     data_vencimento: string; competencia?: string;
     pessoa_id?: string | null; banco_id?: string | null; plano_conta_id?: string | null;
@@ -44,12 +45,12 @@ export async function createLaunches(empresaId: string, input: LaunchInput) {
             const result = await client.query<{ id: string }>(
                 `INSERT INTO lancamentos
                     (empresa_id, descricao, valor, tipo, data_vencimento, pessoa_id, banco_id,
-                     grupo_parcelamento_id, numero_parcela, total_parcelas, competencia, plano_conta_id, status, observacoes)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+                     grupo_parcelamento_id, numero_parcela, total_parcelas, competencia, plano_conta_id, status, observacoes, num_doc)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
                 [empresaId, input.descricao, amount.toFixed(2), input.tipo, due.toISOString().slice(0, 10),
                     input.pessoa_id ?? null, input.banco_id ?? null, grupoId, grupoId ? index + 1 : null, grupoId ? parcelas : null,
                     `${installmentCompetence(input.competencia ?? input.data_vencimento, index)}T00:00:00Z`,
-                    input.plano_conta_id ?? null, input.status ?? "pendente", input.observacoes ?? null],
+                    input.plano_conta_id ?? null, input.status ?? "pendente", input.observacoes ?? null, input.num_doc ?? null],
             );
             const id = result.rows[0]!.id;
             ids.push(id);

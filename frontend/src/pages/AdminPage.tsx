@@ -1,3 +1,4 @@
+import { useMessageBox } from "../hooks/useMessageBox";
 import { SearchInput } from "../components/SearchInput";
 import { Combobox } from "../components/Combobox";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -27,6 +28,7 @@ const formatDate = (value: string | null) =>
     value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "Não definida";
 
 export function AdminPage({ user, request, onLogout }: Props) {
+    const { ask, messageBox } = useMessageBox();
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [companies, setCompanies] = useState<Company[]>([]);
     const [companyId, setCompanyId] = useState("");
@@ -160,7 +162,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
         }
     }
     async function removeUser(item: AdminUser) {
-        if (!window.confirm(`Excluir o usuário ${item.nome}?`)) return;
+        if (!(await ask({ title: "Excluir usuário", message: `Excluir o usuário ${item.nome}?`, confirmLabel: "Excluir usuário", danger: true }))) return;
         try {
             await request(`/admin/users/${item.id}`, { method: "DELETE" });
             await load();
@@ -192,6 +194,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
     }
     return (
         <main className="admin-page">
+            {messageBox}
             <header className="admin-header">
                 <div>
                     <h1>Painel Administrativo</h1>
@@ -288,7 +291,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                                     <td>{item.email}</td>
                                     <td>{item.role}</td>
                                     <td>{item.ativo ? "Ativo" : "Inativo"}</td>
-                                    <td className="row-actions">
+                                    <td className="row-actions delete-actions">
                                         <button
                                             title="Editar"
                                             onClick={() => {
@@ -310,6 +313,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                                                     ? "Não é possível excluir o próprio usuário"
                                                     : "Excluir"
                                             }
+                                            className="row-delete" aria-label={"Excluir usuário " + item.nome}
                                             disabled={item.id === user.id}
                                             onClick={() => void removeUser(item)}
                                         >

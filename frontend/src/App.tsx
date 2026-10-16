@@ -1,3 +1,4 @@
+import { useMessageBox } from "./hooks/useMessageBox";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
@@ -210,6 +211,8 @@ function App() {
     const [company, setCompany] = useState<Company | null>(null);
     const activeCompanyId = useRef<string | null>(null);
     const [page, setPage] = useState(() => pageFromPath(window.location.pathname));
+    const [loadedCompanyId, setLoadedCompanyId] = useState<string | null>(null);
+    const warningMemory = useRef<Record<string, string>>({});
     const [dashboardData, setDashboardData] = useState<Record<string, Row[]>>({});
     const [lookups, setLookups] = useState<Record<string, Row[]>>({});
     const [cashRows, setCashRows] = useState<Row[]>([]);
@@ -262,6 +265,41 @@ function App() {
     const [mobileNav, setMobileNav] = useState(false);
     const [companyMenu, setCompanyMenu] = useState(false);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const { ask, messageBox } = useMessageBox();
+
+    const warningDay = warningDateFormatter.format(new Date());
+    const overdueRows = useMemo(() => (dashboardData.lancamentos || []).filter(item =>
+        item.status === "pendente" && String(item.data_vencimento || "").slice(0, 10) < warningDay), [dashboardData.lancamentos, warningDay]);
+    const overdue = overdueRows.length;
+    useEffect(() => {
+        if (!user || !company || loadedCompanyId !== company.id || !overdue || modal || company.licenca_status === "vencida") return;
+        const key = "fluxo-overdue-warning:" + user.id + ":" + company.id;
+        const frame = window.requestAnimationFrame(() => {
+            if (activeCompanyId.current !== company.id || warningMemory.current[key] === warningDay) return;
+            let last = warningMemory.current[key];
+            try { last = localStorage.getItem(key) || last; } catch { /* Mantém o controle em memória se o armazenamento estiver bloqueado. */ }
+            if (last === warningDay) { warningMemory.current[key] = warningDay; return; }
+            setNotificationsOpen(true);
+            warningMemory.current[key] = warningDay;
+            try { localStorage.setItem(key, warningDay); } catch { /* A abertura manual permanece disponível. */ }
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [user, company, loadedCompanyId, overdue, warningDay, modal]);
+    useEffect(() => {
+        if (!companyMenu && !notificationsOpen) return;
+        const outside = (event: PointerEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (!target.closest(".company-switch, .company-dropdown")) setCompanyMenu(false);
+            if (!target.closest(".notification-anchor")) setNotificationsOpen(false);
+        };
+        const escape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") { setCompanyMenu(false); setNotificationsOpen(false); }
+        };
+        document.addEventListener("pointerdown", outside, true);
+        document.addEventListener("keydown", escape);
+        return () => { document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", escape); };
+    }, [companyMenu, notificationsOpen]);
 
     function navigate(next: string) {
         if (next === "movimentacoes" || next === "recebimentos") next = "baixas";
@@ -324,6 +362,7 @@ function App() {
             if (cancelled || activeCompanyId.current !== company.id) return;
             const cash = results.pop() as { data: Row[] } | undefined;
             const data = Object.fromEntries(results);
+            setLoadedCompanyId(company.id);
             setDashboardData(data);
             setLookups(data);
             setCashRows(cash?.data || []);
@@ -403,6 +442,7 @@ function App() {
         } finally {
             setUser(null);
             activeCompanyId.current = null;
+            setLoadedCompanyId(null); setNotificationsOpen(false);
             setDashboardData({}); setLookups({}); setCashRows([]);
             setCompany(null);
             setCompanies([]);
@@ -411,6 +451,7 @@ function App() {
     }
     async function changeCompany(next: Company) {
         activeCompanyId.current = next.id;
+        setLoadedCompanyId(null); setNotificationsOpen(false);
         setDashboardData({}); setLookups({}); setCashRows([]);
         setSelectedRow(null); setModal(null); setSettlementOverlay(false); setLoading(true);
         setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
@@ -432,7 +473,7 @@ function App() {
         for (const field of resource.fields) {
             const value = form.get(field.name);
             if (field.type === "checkbox") payload[field.name] = value === "on";
-            else if (["observacoes", "razao_social", "endereco", "responsavel_nome", "responsavel_cpf"].includes(field.name)) payload[field.name] = String(value || "").trim() || null;
+            else if (["observacoes", "razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "num_doc"].includes(field.name)) payload[field.name] = String(value || "").trim() || null;
             else if (field.name === "competencia" && typeof value === "string") payload[field.name] = competenceDate(value);
             else if ((field.name === "plano_conta_id" || field.name === "pessoa_id") && value === "" && modal === "edit") payload[field.name] = null;
             else if (typeof value === "string" && value !== "")
@@ -530,7 +571,8 @@ function App() {
     }
 
     async function removeSettlement(row: Row) {
-        if (!company || !selectedRow || busy || !window.confirm("Remover esta baixa? O saldo da conta será atualizado.")) return;
+        if (!company || !selectedRow || busy || !(await ask({ title: "Excluir baixa", message: "Remover esta baixa? O saldo da conta será atualizado.", confirmLabel: "Excluir baixa", danger: true }))) return;
+        if (activeCompanyId.current !== company.id) return;
         const key = selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes";
         setBusy(true);
         try {
@@ -555,6 +597,7 @@ function App() {
         );
         if (activeCompanyId.current !== company.id) return;
         const data = Object.fromEntries(results);
+        setLoadedCompanyId(company.id);
         setDashboardData(data);
         setLookups(data);
         const cash = await api(`/caixa?saldo_inicial=${cashInitial}`, {}, company.id).catch(() => ({
@@ -574,8 +617,9 @@ function App() {
     }
 
     async function removeRow(row: Row) {
-        if (!company || !resource || !window.confirm(`Excluir este registro de ${resource.singular}?`))
+        if (!company || !resource || !(await ask({ title: "Excluir registro", message: `Excluir este registro de ${resource.singular}?`, confirmLabel: "Excluir registro", danger: true })))
             return;
+        if (activeCompanyId.current !== company.id) return;
         try {
             await api(`${resource.key === "baixas" ? "/" + row.origem : resource.endpoint}/${row.id}`, { method: "DELETE" }, company.id);
             notify("Registro excluído.");
@@ -646,16 +690,6 @@ function App() {
     const cashOut = visibleRows
         .filter((item) => item.tipo === "pagar" && item.status !== "cancelado" && item.status !== "pago")
         .reduce((sum, item) => sum + remainingAmount(item, dashboardData), 0);
-    const overdue = visibleRows.filter(
-        (item) =>
-            item.status === "pendente" &&
-            String(item.data_vencimento || "").slice(0, 10) < new Date().toISOString().slice(0, 10),
-    ).length;
-    const overdueRows = visibleRows.filter(
-        (item) =>
-            item.status === "pendente" &&
-            String(item.data_vencimento || "").slice(0, 10) < new Date().toISOString().slice(0, 10),
-    );
     const flowRows = [
         ...(dashboardData.recebimentos || []).map((item) => ({
             ...item,
@@ -716,7 +750,7 @@ function App() {
     return (
         <>
             <div className="app-shell">
-                <aside inert={Boolean(modal)} id="main-navigation" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+                <aside inert={Boolean(modal)} id="main-navigation" className={`sidebar ${mobileNav ? "sidebar-open" : ""} ${companyMenu ? "company-menu-open" : ""}`}>
                     <div className="sidebar-brand">
                         <span className="brand-mark">
                             <Icon name="trend" size={20} />
@@ -1041,10 +1075,9 @@ function App() {
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
                             {modal === "details" && currentAccount ? (
                                 <div className="record-form">
-                                    <p><b>{displayValue("pessoa_id", currentAccount.pessoa_id)} · {String(currentAccount.descricao)}</b></p>
+                                    <p><b>{currentAccount.pessoa_id && <>{displayValue("pessoa_id", currentAccount.pessoa_id)} · </>}{String(currentAccount.descricao)}</b></p>
                                     <AccountSettlements account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />
-                                    <div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={() => setModal(null)}>Fechar</button></div>
                                 </div>
                             ) : modal === "company-edit" ? (
                                 <form onSubmit={updateCompany} className="record-form">
@@ -1141,6 +1174,7 @@ function App() {
                             busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
                     </section>
                 </div>}
+                {messageBox}
                 {toast && (
                     <div className={`toast toast-${toast.type}`} role="status">
                         <span className="toast-check">
@@ -1156,6 +1190,8 @@ function App() {
         </>
     );
 }
+
+const warningDateFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" });
 
 function currency(value: number) {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(

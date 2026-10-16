@@ -10,6 +10,7 @@ export const resources: Resource[] = [
         fields: [
             { name: "pessoa_id", label: "Cliente", type: "select", source: "pessoas", wide: true },
             { name: "descricao", label: "Descrição", required: true, wide: true },
+            { name: "num_doc", label: "Num DOC", maxLength: 100 },
             { name: "plano_conta_id", label: "Plano de contas", type: "select", source: "planos", wide: true },
             { name: "valor", label: "Valor", type: "number", required: true },
             {
@@ -32,6 +33,7 @@ export const resources: Resource[] = [
             ["numero", "Nº"],
             ["pessoa_id", "Cliente"],
             ["descricao", "Descrição"],
+            ["num_doc", "Num DOC"],
             ["tipo", "Tipo"],
             ["data_vencimento", "Vencimento"],
             ["competencia", "Competência"],

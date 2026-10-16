@@ -5,7 +5,7 @@ import type { Row } from "../types";
 
 export type SettlementFilterValues = { formaPagamento: string; dataInicial: string; dataFinal: string };
 type Props = {
-    search: string; onSearch: (value: string) => void;
+    search?: string; onSearch?: (value: string) => void;
     filters: SettlementFilterValues; onChange: (filters: SettlementFilterValues) => void;
     paymentForms: Row[]; children?: ReactNode;
 };
@@ -14,9 +14,9 @@ export function SettlementFilters({ search, onSearch, filters, onChange, payment
     const invalid = Boolean(filters.dataInicial && filters.dataFinal && filters.dataInicial > filters.dataFinal);
     return <div className="settlement-filter-group" onKeyDown={event => { if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault(); }}>
         <div className="inline-filters settlement-filter-row">
-            <label className="filter-search">Cliente ou descrição
-                <SearchInput aria-label="Buscar cliente ou descrição" placeholder="Cliente ou descrição" value={search} onChange={onSearch} />
-            </label>
+            {onSearch && <label className="filter-search">Cliente ou descrição
+                <SearchInput aria-label="Buscar cliente ou descrição" placeholder="Cliente ou descrição" value={search ?? ""} onChange={onSearch} />
+            </label>}
             <label>Forma de pagamento
                 <Combobox label="Filtrar por forma de pagamento" placeholder="Todas as formas" emptyLabel="Todas as formas"
                     value={filters.formaPagamento} options={paymentForms.map(item => [String(item.id), String(item.descricao)])}

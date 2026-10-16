@@ -34,11 +34,13 @@ function InputField({ field, selectedRow }: Pick<Props, "selectedRow"> & { field
 export function RecordFormFields({ fields, selectedRow, lookups, editing, onCreatePerson }: Props) {
     const launch = fields.some((field) => field.name === "parcelas");
     const isLancamento = launch && !editing;
+    const documentField = fields.find(field => field.name === "num_doc");
     const [due, setDue] = useState(dateInputValue(selectedRow?.data_vencimento));
     const [competence, setCompetence] = useState(competenceLabel(selectedRow?.competencia || selectedRow?.data_vencimento));
     const [mode, setMode] = useState("total"); const [detailed, setDetailed] = useState(false);
     const [installments, setInstallments] = useState("1");
     return <div className="form-grid">{fields.filter((field) => !(launch && field.name === "parcelas") && !(field.type === "checkbox" && field.name === "fornecedor") && !(launch && field.name === "banco_id")).map((field) => {
+        if (isLancamento && field.name === "num_doc") return null;
         if (field.type === "checkbox") return <PersonRoles key={field.name} selectedRow={selectedRow} />;
         if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name} selectedRow={selectedRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} />;
         if (isLancamento && field.name === "valor") return <fieldset className="installment-options installment-value full-field" key={field.name}>
@@ -64,7 +66,7 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, onCrea
                 </label><small>Contados a partir da data de vencimento informada. Ex.: 15, 30, 45.</small></div>}
             </>}
         </fieldset>;
-        return <label key={field.name} className={`form-field ${field.wide ? "full-field" : ""}`}>{field.name === "valor" && isLancamento ? mode === "total" ? "Valor total da operação" : "Valor de cada parcela" : field.label}
+        const formField = <label key={field.name} className={`form-field ${field.wide || (isLancamento && field.name === "tipo") ? "full-field" : ""}`}>{field.name === "valor" && isLancamento ? mode === "total" ? "Valor total da operação" : "Valor de cada parcela" : field.label}
             {launch && field.name === "data_vencimento" ? <input name={field.name} type="date" required value={due} onChange={event => { setDue(event.target.value); setCompetence(competenceLabel(event.target.value)); }} />
             : field.name === "competencia" ? <><input name={field.name} value={competence} required={field.required} placeholder="out/2026" pattern="(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/[0-9]{4}" title="Informe mês/ano, por exemplo out/2026" onChange={event => setCompetence(event.target.value.toLowerCase())} /><small className="field-hint">Mês/ano. Pode ser diferente do vencimento.</small></>
             : field.type === "textarea" ? <textarea name={field.name} rows={3} maxLength={5000} defaultValue={String(selectedRow?.[field.name] ?? "")} />
@@ -75,6 +77,11 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, onCrea
                     return [description.toLocaleLowerCase("pt-BR"), description] as const;
                 })).values()).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR")).map(text => [text, text])} />
             : field.type === "select" ? <SelectField field={field} selectedRow={selectedRow} lookups={lookups} editing={editing} /> : <InputField field={field} selectedRow={selectedRow} />}</label>;
+        if (isLancamento && field.name === "descricao" && documentField) return <div className="account-reference-fields full-field" key={field.name}>
+            {formField}
+            <label className="form-field">{documentField.label}<InputField field={documentField} selectedRow={selectedRow} /></label>
+        </div>;
+        return formField;
     })}
     </div>;
 }

@@ -117,6 +117,7 @@ export function ResourcePage({
     const sortable = ["lancamentos", "baixas"].includes(resource.key);
     const columnClass = (key: string) => [
         key === "numero" ? "account-number" : "",
+        resource.key === "pessoas" && ["cliente", "fornecedor"].includes(key) ? "person-role-cell" : "",
         (showSettlement && ["competencia", "plano_conta_id"].includes(key)) ||
         (resource.key === "pessoas" && ["razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "observacoes"].includes(key)) ? "mobile-secondary" : "",
     ].filter(Boolean).join(" ");
@@ -141,42 +142,45 @@ export function ResourcePage({
                     <div className="list-count">
                         <b>{rows.length}</b> {rows.length === 1 ? "registro" : "registros"}
                     </div>
-                    {!dateFilters && <label className="search-box">
+                    {!dateFilters && !showSettlement && <label className="search-box">
                         <Icon name="search" size={17} />
                         <SearchInput value={search} onChange={onSearch}
                             placeholder={showSettlement ? "Cliente ou descrição" : resource.key === "pessoas" ? "Nome, CPF ou celular" : "Buscar registros..."}
                             aria-label={showSettlement ? "Buscar cliente ou descrição" : resource.key === "pessoas" ? "Buscar nome, CPF ou celular" : "Buscar registros"} />
                     </label>}
-                    {personFilters && onPersonFiltersChange && <div className="filter-toggles">
+                    {!showSettlement && !personFilters && !dateFilters && <button className="filter-button" onClick={() => onSearch("")}>
+                        <Icon name="close" size={16} /> Limpar busca
+                    </button>}
+                </div>
+                    {personFilters && onPersonFiltersChange && <div className="filter-toggles people-role-filters">
                         <label className="paid-filter"><input type="checkbox" checked={personFilters.mostrarClientes}
                             onChange={event => onPersonFiltersChange({ ...personFilters, mostrarClientes: event.target.checked })} /> Mostrar clientes</label>
                         <label className="paid-filter"><input type="checkbox" checked={personFilters.mostrarFornecedores}
                             onChange={event => onPersonFiltersChange({ ...personFilters, mostrarFornecedores: event.target.checked })} /> Mostrar fornecedores</label>
                     </div>}
-                    <button className="filter-button" onClick={() => onSearch("")}>
-                        <Icon name="close" size={16} /> Limpar busca
-                    </button>
-                </div>
                 {personFilters && rows.some(row => !row.cliente && !row.fornecedor) && <p className="legacy-people-note" role="status">
                     Há {rows.filter(row => !row.cliente && !row.fornecedor).length} pessoa(s) antiga(s) sem vínculo. Com os dois filtros marcados, edite esses cadastros para indicar cliente ou fornecedor.
                 </p>}
                 {dateFilters && onDateFiltersChange && <SettlementFilters search={search} onSearch={onSearch}
                     filters={dateFilters} onChange={filters => onDateFiltersChange({ ...dateFilters, ...filters })} paymentForms={paymentForms}>
-                    <div className="filter-toggles">
+                    <button type="button" className="filter-button clear-settlement-search" onClick={() => onSearch("")}><Icon name="close" size={16} /> Limpar busca</button>
+                </SettlementFilters>}
+                {dateFilters && onDateFiltersChange && <div className="filter-toggles settlement-type-filters">
                         <label className="paid-filter"><input type="checkbox" checked={dateFilters.mostrarRecebimentos}
                             onChange={event => onDateFiltersChange({ ...dateFilters, mostrarRecebimentos: event.target.checked })} /> Mostrar recebimentos</label>
                         <label className="paid-filter"><input type="checkbox" checked={dateFilters.mostrarPagamentos}
                             onChange={event => onDateFiltersChange({ ...dateFilters, mostrarPagamentos: event.target.checked })} /> Mostrar pagamentos</label>
-                    </div>
-                </SettlementFilters>}
+                </div>}
                 {showSettlement && lancamentoFilters && onLancamentoFiltersChange && (
                     <div className="launch-filters">
-                        <div className="launch-filters-fields">
+                        <div className="launch-filters-fields inline-filters">
+                            <label className="filter-search">Cliente ou descrição
+                                <SearchInput value={search} onChange={onSearch} placeholder="Cliente ou descrição" aria-label="Buscar cliente ou descrição" />
+                            </label>
                             <label>Forma de pagamento
                                 <Combobox label="Filtrar por forma de pagamento" placeholder="Todas as formas" emptyLabel="Todas as formas" value={lancamentoFilters.formaPagamento}
                                     options={paymentForms.map(item => [String(item.id), String(item.descricao)])}
                                     onChange={formaPagamento => onLancamentoFiltersChange({ ...lancamentoFilters, formaPagamento })} />
-                                <small className="field-hint">Considera as formas usadas nas baixas.</small>
                             </label>
                             <label>Tipo
                                 <Combobox label="Tipo de conta" required value={lancamentoFilters.tipo}
@@ -261,7 +265,9 @@ export function ResourcePage({
                                             ? row.tipo === "receber"
                                                 ? "income-row"
                                                 : "expense-row"
-                                            : ""
+                                            : resource.key === "baixas"
+                                              ? row.origem === "recebimentos" ? "income-row" : "expense-row"
+                                              : ""
                                     }
                                     key={String(row.origem || "") + String(row.id || index)}
                                     tabIndex={0}
@@ -288,6 +294,8 @@ export function ResourcePage({
                                                 </div>
                                             ) : key === "observacoes" ? (
                                                 <span className="notes-preview" title={String(row.observacoes || "")}>{formatValue(key, row[key])}</span>
+                                            ) : resource.key === "pessoas" && (key === "cliente" || key === "fornecedor") ? (
+                                                <span className={row[key] ? "role-indicator role-yes" : "role-indicator role-no"} role="img" aria-label={row[key] ? "Sim" : "Não"} title={row[key] ? "Sim" : "Não"}><Icon name={row[key] ? "check" : "close"} size={17} /></span>
                                             ) : key === "status" ? (
                                                 <Status value={row[key]} />
                                             ) : key === "tipo" &&
@@ -304,7 +312,7 @@ export function ResourcePage({
                                             )}
                                         </td>
                                     ))}
-                                    <td className={`row-actions ${showSettlement ? "launch-actions" : ""}`} onClick={event => event.stopPropagation()}>
+                                    <td className={`row-actions delete-actions ${showSettlement ? "launch-actions" : ""}`} onClick={event => event.stopPropagation()}>
                                         {showSettlement && !hasSettlements(row) && Number(row.saldo) > 0 &&
                                             row.status !== "pago" &&
                                             row.status !== "cancelado" && (
@@ -326,7 +334,7 @@ export function ResourcePage({
                                                 <Icon name="card" size={16} /><span>Detalhes</span>
                                             </button>
                                         )}
-                                        <button title="Excluir" onClick={() => onDelete(row)}>
+                                        <button className="row-delete" aria-label="Excluir registro" title="Excluir" onClick={() => onDelete(row)}>
                                             <Icon name="trash" size={16} />
                                         </button>
                                     </td>

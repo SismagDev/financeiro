@@ -72,7 +72,7 @@ export function CashPage({
                     </div>
                 </article>
             </section>
-            <section className="panel list-panel">
+            <section className="panel list-panel cash-list-panel">
                 <div className="table-wrap">
                     <table className="data-table">
                         <thead>

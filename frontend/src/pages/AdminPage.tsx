@@ -1,3 +1,5 @@
+import { SearchInput } from "../components/SearchInput";
+import { Combobox } from "../components/Combobox";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import type { User } from "../types";
@@ -192,7 +194,6 @@ export function AdminPage({ user, request, onLogout }: Props) {
         <main className="admin-page">
             <header className="admin-header">
                 <div>
-                    <span className="eyebrow muted">ADMINISTRAÇÃO</span>
                     <h1>Painel Administrativo</h1>
                     <p>Gerencie usuários, empresas e licenças.</p>
                 </div>
@@ -232,11 +233,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                         </label>
                         <label>
                             Perfil
-                            <select name="role" defaultValue={editingUser?.role || "comum"}>
-                                <option value="comum">Comum</option>
-                                <option value="contador">Contador</option>
-                                <option value="admin">Administrador</option>
-                            </select>
+                            <Combobox key={editingUser?.id || "new"} name="role" label="Perfil" required defaultValue={editingUser?.role || "comum"} options={[["comum", "Comum"], ["contador", "Contador"], ["admin", "Administrador"]]} />
                         </label>
                         <label>
                             Senha
@@ -264,11 +261,11 @@ export function AdminPage({ user, request, onLogout }: Props) {
                     </form>
                 )}
                 {!creatingUser && (
-                    <input
+                    <SearchInput
                         className="admin-search"
                         placeholder="Buscar usuário por nome"
                         value={userSearch}
-                        onChange={(event) => setUserSearch(event.target.value)}
+                        onChange={setUserSearch}
                     />
                 )}
                 <div className="table-wrap">
@@ -370,11 +367,11 @@ export function AdminPage({ user, request, onLogout }: Props) {
                     </form>
                 )}
                 {!(creatingCompany || editingCompany) && (
-                    <input
+                    <SearchInput
                         className="admin-search"
                         placeholder="Buscar empresa por nome"
                         value={companySearch}
-                        onChange={(event) => setCompanySearch(event.target.value)}
+                        onChange={setCompanySearch}
                     />
                 )}
                 <div className="table-wrap">
@@ -455,23 +452,9 @@ export function AdminPage({ user, request, onLogout }: Props) {
                         </form>
                         <b>Usuários vinculados</b>
                         <div className="admin-link-user">
-                            <select
-                                value={linkUserId}
-                                onChange={(event) => setLinkUserId(event.target.value)}
-                            >
-                                <option value="">Vincular usuário</option>
-                                {users
-                                    .filter(
-                                        (item) =>
-                                            item.role !== "admin" &&
-                                            !companyUsers.some((linked) => linked.id === item.id),
-                                    )
-                                    .map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.nome} · {item.email}
-                                        </option>
-                                    ))}
-                            </select>
+                            <Combobox label="Vincular usuário" placeholder="Vincular usuário" value={linkUserId} onChange={setLinkUserId}
+                                options={users.filter(item => item.role !== "admin" && !companyUsers.some(linked => linked.id === item.id))
+                                    .map(item => [item.id, item.nome + " · " + item.email])} />
                             <button
                                 className="button button-primary"
                                 onClick={() => void linkUser()}

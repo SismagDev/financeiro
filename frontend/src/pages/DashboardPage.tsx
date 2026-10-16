@@ -58,11 +58,6 @@ export function DashboardPage({
         <>
             <div className="page-heading">
                 <div>
-                    <span className="eyebrow muted">
-                        {new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" })
-                            .format(new Date())
-                            .toUpperCase()}
-                    </span>
                     <h1>
                         Olá, {user.nome?.split(" ")[0] || "tudo bem"} <span className="wave">✳</span>
                     </h1>
@@ -223,7 +218,7 @@ export function DashboardPage({
                             ["lancamentos", "Nova conta", "Registre uma entrada ou saída", "arrows"],
                             ["pessoas", "Cadastrar pessoa", "Cliente ou fornecedor", "users"],
                             ["caixa", "Ver gestão de caixa", "Acompanhe seu saldo em ordem", "wallet"],
-                            ["recebimentos", "Registrar recebimento", "Dê baixa em um valor", "arrowDown"],
+                            ["baixas", "Registrar baixa", "Dê baixa em um valor", "arrowDown"],
                         ].map(([key, title, detail, icon]) => (
                             <button
                                 key={key}

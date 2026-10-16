@@ -8,6 +8,7 @@ export const resources: Resource[] = [
         singular: "conta",
         icon: "arrows",
         fields: [
+            { name: "pessoa_id", label: "Cliente", type: "select", source: "pessoas", wide: true },
             { name: "descricao", label: "Descrição", required: true, wide: true },
             { name: "plano_conta_id", label: "Plano de contas", type: "select", source: "planos", wide: true },
             { name: "valor", label: "Valor", type: "number", required: true },
@@ -23,18 +24,20 @@ export const resources: Resource[] = [
             },
             { name: "data_vencimento", label: "Vencimento", type: "date", required: true },
             { name: "competencia", label: "Competência", required: true },
-            { name: "pessoa_id", label: "Cliente", type: "select", source: "pessoas" },
             { name: "banco_id", label: "Instituição", type: "select", source: "bancos" },
             { name: "parcelas", label: "Número de parcelas", type: "number", required: true, wide: true },
+            { name: "observacoes", label: "Observações", type: "textarea", wide: true },
         ],
         columns: [
+            ["numero", "Nº"],
+            ["pessoa_id", "Cliente"],
             ["descricao", "Descrição"],
-            ["pessoa_id", "Pessoa"],
             ["tipo", "Tipo"],
             ["data_vencimento", "Vencimento"],
             ["competencia", "Competência"],
             ["plano_conta_id", "Plano de contas"],
-            ["valor", "Valor"],
+            ["valor", "Valor total"],
+            ["saldo", "Saldo para quitação"],
             ["status", "Status"],
         ],
     },
@@ -45,18 +48,28 @@ export const resources: Resource[] = [
         singular: "pessoa",
         icon: "users",
         fields: [
-            { name: "nome", label: "Nome", required: true, wide: true },
+            { name: "nome", label: "Nome / nome fantasia", required: true, wide: true },
+            { name: "razao_social", label: "Razão social", wide: true },
             { name: "documento", label: "CPF ou CNPJ" },
             { name: "celular", label: "Celular" },
+            { name: "endereco", label: "Endereço", wide: true, maxLength: 500 },
+            { name: "responsavel_nome", label: "Nome do responsável" },
+            { name: "responsavel_cpf", label: "CPF do responsável", maxLength: 14 },
             { name: "cliente", label: "É cliente", type: "checkbox" },
             { name: "fornecedor", label: "É fornecedor", type: "checkbox" },
+            { name: "observacoes", label: "Observações", type: "textarea", wide: true },
         ],
         columns: [
-            ["nome", "Nome"],
+            ["nome", "Nome / fantasia"],
+            ["razao_social", "Razão social"],
+            ["endereco", "Endereço"],
+            ["responsavel_nome", "Responsável"],
+            ["responsavel_cpf", "CPF do responsável"],
             ["documento", "Documento"],
             ["celular", "Celular"],
             ["cliente", "Cliente"],
             ["fornecedor", "Fornecedor"],
+            ["observacoes", "Observações"],
         ],
     },
     {
@@ -178,6 +191,16 @@ export const resources: Resource[] = [
     },
 ];
 
+// A tela unificada continua usando os dois recursos de baixa existentes.
+export const baixasResource: Resource = {
+    key: "baixas", title: "Baixas", endpoint: "", singular: "baixa", icon: "arrows",
+    fields: resources.find(resource => resource.key === "movimentacoes")!.fields.map(field =>
+        field.name === "lancamento_id" ? { ...field, label: "Cliente ou descrição da conta" } :
+        field.name === "data_movimentacao" ? { ...field, name: "data_baixa" } : field),
+    columns: [["pessoa_id", "Cliente"], ["descricao", "Descrição"], ["natureza", "Tipo"],
+        ["forma_pagamento_id", "Forma de pagamento"], ["data_baixa", "Data"], ["valor", "Valor"]],
+};
+
 export const pagePaths: Record<string, string> = {
     dashboard: "/",
     caixa: "/caixa",
@@ -186,10 +209,10 @@ export const pagePaths: Record<string, string> = {
     formas: "/formas-pagamento",
     bancos: "/bancos",
     planos: "/planos-contas",
-    movimentacoes: "/movimentacoes",
-    recebimentos: "/recebimentos",
+    baixas: "/baixas",
 };
 
 export function pageFromPath(path: string) {
+    if (path === "/movimentacoes" || path === "/recebimentos") return "baixas";
     return Object.entries(pagePaths).find(([, value]) => value === path)?.[0] || "dashboard";
 }

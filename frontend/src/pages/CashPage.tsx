@@ -34,7 +34,6 @@ export function CashPage({
         <>
             <div className="page-heading list-heading">
                 <div>
-                    <span className="eyebrow muted">FINANCEIRO</span>
                     <h1>Gestão de caixa</h1>
                     <p>Veja, em ordem, como cada entrada e saída alterou o saldo.</p>
                 </div>

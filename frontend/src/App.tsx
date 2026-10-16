@@ -1,6 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { AccountSettlements } from "./components/AccountSettlements";
+import { SettlementForm } from "./components/SettlementForm";
+import { Combobox } from "./components/Combobox";
+import { matchesAccount, matchesSettlementFilters, remainingAmount } from "./utils/accounts";
 import { Icon } from "./components/Icon";
-import { pageFromPath, pagePaths, resources } from "./data/resources";
+import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
 import type { Company, Row, User } from "./types";
 import "./App.css";
 import { competenceDate, competenceLabel } from "./utils/dates";
@@ -204,6 +208,7 @@ function App() {
     const [authChecked, setAuthChecked] = useState(false);
     const [companies, setCompanies] = useState<Company[]>([]);
     const [company, setCompany] = useState<Company | null>(null);
+    const activeCompanyId = useRef<string | null>(null);
     const [page, setPage] = useState(() => pageFromPath(window.location.pathname));
     const [dashboardData, setDashboardData] = useState<Record<string, Row[]>>({});
     const [lookups, setLookups] = useState<Record<string, Row[]>>({});
@@ -211,22 +216,30 @@ function App() {
     const [cashInitial, setCashInitial] = useState(0);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "unsettle" | null>(null);
+    const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     const [search, setSearch] = useState("");
     const [settlementFilters, setSettlementFilters] = useState({
-        movimentacoes: { dataInicial: "", dataFinal: "" },
-        recebimentos: { dataInicial: "", dataFinal: "" },
+        dataInicial: "", dataFinal: "", formaPagamento: "", mostrarRecebimentos: true, mostrarPagamentos: true,
     });
+    const [personFilters, setPersonFilters] = useState({ mostrarClientes: true, mostrarFornecedores: true });
+    const [settlementOverlay, setSettlementOverlay] = useState(false);
+    const [zoom, setZoom] = useState(100);
+    useEffect(() => {
+        document.documentElement.style.setProperty("--app-zoom", String(zoom / 100));
+        return () => document.documentElement.style.removeProperty("--app-zoom");
+    }, [zoom]);
     const currentMonth = new Date();
     const [lancamentoFilters, setLancamentoFilters] = useState<{
-        cliente: string;
+        formaPagamento: string;
+        mostrarEmAberto: boolean;
         dataInicial: string;
         dataFinal: string;
         mostrarPagos: boolean;
         tipo: "todos" | "pagar" | "receber";
     }>(() => ({
-        cliente: "",
+        formaPagamento: "",
+        mostrarEmAberto: true,
         dataInicial: new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
             .toISOString()
             .slice(0, 10),
@@ -236,12 +249,22 @@ function App() {
         mostrarPagos: false,
         tipo: "todos",
     }));
+    useEffect(() => {
+        if (!modal) return;
+        const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const frame = window.requestAnimationFrame(() => {
+            const dialog = document.querySelector<HTMLElement>(settlementOverlay ? ".settlement-overlay [role=dialog]" : ".modal-backdrop [role=dialog]");
+            dialog?.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled]):not([type=hidden])")?.focus();
+        });
+        return () => { window.cancelAnimationFrame(frame); if (previous?.isConnected) previous.focus(); };
+    }, [modal, settlementOverlay]);
     const [toast, setToast] = useState<Toast | null>(null);
     const [mobileNav, setMobileNav] = useState(false);
     const [companyMenu, setCompanyMenu] = useState(false);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
 
     function navigate(next: string) {
+        if (next === "movimentacoes" || next === "recebimentos") next = "baixas";
         preloadPage(next);
         const path = pagePaths[next] || "/";
         if (window.location.pathname !== path) window.history.pushState({}, "", path);
@@ -261,6 +284,7 @@ function App() {
         setCompanies(list);
         const saved = localStorage.getItem("fluxo-company");
         const chosen = list.find((item) => item.id === saved) || list[0] || null;
+        activeCompanyId.current = chosen?.id ?? null;
         setCompany(chosen);
         if (chosen) localStorage.setItem("fluxo-company", chosen.id);
         else localStorage.removeItem("fluxo-company");
@@ -287,6 +311,7 @@ function App() {
         if (!companies.length) return;
         if (!company) return;
         if (company.licenca_status === "vencida") return;
+        let cancelled = false;
         const endpoints = resources.map((item) =>
             api(item.endpoint, {}, company.id)
                 .then((result: { data: Row[] }) => [item.key, result.data] as const)
@@ -296,6 +321,7 @@ function App() {
             ...endpoints,
             api(`/caixa?saldo_inicial=${cashInitial}`, {}, company.id).catch(() => ({ data: [] })),
         ]).then((results) => {
+            if (cancelled || activeCompanyId.current !== company.id) return;
             const cash = results.pop() as { data: Row[] } | undefined;
             const data = Object.fromEntries(results);
             setDashboardData(data);
@@ -303,37 +329,55 @@ function App() {
             setCashRows(cash?.data || []);
             setLoading(false);
         });
+        return () => { cancelled = true; };
     }, [user, company, companies.length, page, cashInitial]);
 
-    const resource = resources.find((item) => item.key === page);
-    const currentRows = dashboardData[page] || EMPTY_ROWS;
-    const settlementPage = page === "movimentacoes" || page === "recebimentos" ? page : null;
-    const dateFilters = settlementPage ? settlementFilters[settlementPage] : undefined;
-    const filteredRows = useMemo(
-        () =>
-            currentRows.filter((row) => {
-                if (!JSON.stringify(row).toLowerCase().includes(search.toLowerCase())) return false;
-                if (dateFilters) {
-                    if (dateFilters.dataInicial && dateFilters.dataFinal && dateFilters.dataInicial > dateFilters.dataFinal) return true;
-                    const day = String(row[page === "movimentacoes" ? "data_movimentacao" : "data_recebimento"] || "").slice(0, 10);
-                    return (!dateFilters.dataInicial || day >= dateFilters.dataInicial) &&
-                        (!dateFilters.dataFinal || day <= dateFilters.dataFinal);
-                }
-                if (page !== "lancamentos") return true;
-                const pessoa = (lookups.pessoas || []).find((item) => item.id === row.pessoa_id);
-                const cliente = String(pessoa?.nome || "").toLowerCase();
-                const vencimento = String(row.data_vencimento || "").slice(0, 10);
-                return (
-                    (lancamentoFilters.tipo === "todos" || row.tipo === lancamentoFilters.tipo) &&
-                    (lancamentoFilters.mostrarPagos || row.status !== "pago") &&
-                    (!lancamentoFilters.cliente ||
-                        cliente.includes(lancamentoFilters.cliente.toLowerCase())) &&
-                    (!lancamentoFilters.dataInicial || vencimento >= lancamentoFilters.dataInicial) &&
-                    (!lancamentoFilters.dataFinal || vencimento <= lancamentoFilters.dataFinal)
-                );
-            }),
-        [currentRows, search, page, lookups.pessoas, lancamentoFilters, dateFilters],
-    );
+    const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
+    const currentRows = useMemo<Row[]>(() => {
+        if (page === "baixas") return ["recebimentos", "movimentacoes"].flatMap(origin =>
+            (dashboardData[origin] || []).map(row => {
+                const account = (dashboardData.lancamentos || []).find(item => item.id === row.lancamento_id);
+                return { ...row, origem: origin, pessoa_id: account?.pessoa_id, descricao: account?.descricao,
+                    natureza: origin === "recebimentos" ? "Recebimento" : "Pagamento",
+                    data_baixa: row.data_recebimento || row.data_movimentacao };
+            }));
+        if (page === "lancamentos") return (dashboardData.lancamentos || []).map(row => {
+            const records = (dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [])
+                .filter(item => item.lancamento_id === row.id);
+            const dates = records.map(item => String(item.data_recebimento || item.data_movimentacao || "")).filter(Boolean).sort();
+            return { ...row, saldo: remainingAmount(row, dashboardData), data_ultima_baixa: dates.at(-1) };
+        });
+        return dashboardData[page] || EMPTY_ROWS;
+    }, [dashboardData, page]);
+    const dateFilters = page === "baixas" ? settlementFilters : undefined;
+    const filteredRows = useMemo(() => currentRows.filter(row => {
+        if (page === "lancamentos" || page === "baixas") {
+            if (!matchesAccount(row, search, lookups.pessoas || [])) return false;
+        } else if (page === "pessoas") {
+            const term = search.trim().toLocaleLowerCase("pt-BR");
+            const digits = term.replace(/\D/g, "");
+            const matches = !term || String(row.nome || "").toLocaleLowerCase("pt-BR").includes(term) ||
+                [row.documento, row.responsavel_cpf, row.celular].some(value => String(value || "").toLowerCase().includes(term) ||
+                    (digits.length > 0 && /^[\d\s().+/-]+$/.test(term) && String(value || "").replace(/\D/g, "").includes(digits)));
+            // Registros legados sem vínculo continuam acessíveis para correção quando ambos estão marcados.
+            return matches && ((personFilters.mostrarClientes && Boolean(row.cliente)) ||
+                (personFilters.mostrarFornecedores && Boolean(row.fornecedor)) ||
+                (personFilters.mostrarClientes && personFilters.mostrarFornecedores && !row.cliente && !row.fornecedor));
+        } else if (!JSON.stringify(row).toLowerCase().includes(search.toLowerCase())) return false;
+        if (dateFilters) {
+            if (!(row.origem === "recebimentos" ? dateFilters.mostrarRecebimentos : dateFilters.mostrarPagamentos)) return false;
+            return matchesSettlementFilters(row, dateFilters);
+        }
+        if (page !== "lancamentos") return true;
+        const due = String(row.data_vencimento || "").slice(0, 10);
+        const records = dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [];
+        return (lancamentoFilters.tipo === "todos" || row.tipo === lancamentoFilters.tipo) &&
+            (row.status === "pago" ? lancamentoFilters.mostrarPagos :
+                (row.status === "pendente" || row.status === "parcial") && lancamentoFilters.mostrarEmAberto) &&
+            (!lancamentoFilters.formaPagamento || records.some(item => item.lancamento_id === row.id && item.forma_pagamento_id === lancamentoFilters.formaPagamento)) &&
+            (!lancamentoFilters.dataInicial || due >= lancamentoFilters.dataInicial) &&
+            (!lancamentoFilters.dataFinal || due <= lancamentoFilters.dataFinal);
+    }), [currentRows, search, page, lookups.pessoas, dashboardData, lancamentoFilters, dateFilters, personFilters]);
     const notify = (message: string, type: Toast["type"] = "success") => {
         setToast({ message, type });
         window.setTimeout(() => setToast(null), 3200);
@@ -348,6 +392,7 @@ function App() {
             await loadCompanies();
         } catch {
             setCompanies([]);
+            activeCompanyId.current = null;
             setCompany(null);
         }
         setLoading(false);
@@ -357,12 +402,19 @@ function App() {
             await api("/auth/logout", { method: "POST" });
         } finally {
             setUser(null);
+            activeCompanyId.current = null;
+            setDashboardData({}); setLookups({}); setCashRows([]);
             setCompany(null);
             setCompanies([]);
             localStorage.removeItem("fluxo-company");
         }
     }
     async function changeCompany(next: Company) {
+        activeCompanyId.current = next.id;
+        setDashboardData({}); setLookups({}); setCashRows([]);
+        setSelectedRow(null); setModal(null); setSettlementOverlay(false); setLoading(true);
+        setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
+        setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
         setCompany(next);
         localStorage.setItem("fluxo-company", next.id);
         setCompanyMenu(false);
@@ -380,6 +432,7 @@ function App() {
         for (const field of resource.fields) {
             const value = form.get(field.name);
             if (field.type === "checkbox") payload[field.name] = value === "on";
+            else if (["observacoes", "razao_social", "endereco", "responsavel_nome", "responsavel_cpf"].includes(field.name)) payload[field.name] = String(value || "").trim() || null;
             else if (field.name === "competencia" && typeof value === "string") payload[field.name] = competenceDate(value);
             else if ((field.name === "plano_conta_id" || field.name === "pessoa_id") && value === "" && modal === "edit") payload[field.name] = null;
             else if (typeof value === "string" && value !== "")
@@ -395,10 +448,21 @@ function App() {
                 .map((item) => Number(item.trim()))
                 .filter((item) => Number.isInteger(item) && item > 0);
             delete payload.parcelas;
+            let settlementEndpoint = "";
+            if (resource.key === "baixas") {
+                const account = (lookups.lancamentos || []).find(item => item.id === payload.lancamento_id);
+                const origin = editing ? selectedRow.origem : account?.tipo === "receber" ? "recebimentos" : "movimentacoes";
+                if (!editing && !account) throw new Error("Selecione a conta para registrar a baixa.");
+                if (origin !== "recebimentos" && origin !== "movimentacoes") throw new Error("Tipo de baixa inválido.");
+                settlementEndpoint = "/" + origin;
+                if (payload.data_baixa) payload[origin === "recebimentos" ? "data_recebimento" : "data_movimentacao"] = payload.data_baixa;
+                delete payload.data_baixa;
+                if (editing) delete payload.lancamento_id;
+            }
             const endpoint =
                 !editing && resource.key === "lancamentos" && parcelas > 1
                     ? "/lancamentos/parcelado"
-                    : `${resource.endpoint}${editing ? `/${selectedRow.id}` : ""}`;
+                    : `${settlementEndpoint || resource.endpoint}${editing ? `/${selectedRow.id}` : ""}`;
             await api(
                 endpoint,
                 {
@@ -434,14 +498,6 @@ function App() {
         }
     }
 
-    function remainingAmount(row: Row) {
-        const records =
-            row.tipo === "receber" ? dashboardData.recebimentos || [] : dashboardData.movimentacoes || [];
-        const settled = records
-            .filter((item) => item.lancamento_id === row.id)
-            .reduce((sum, item) => sum + Number(item.valor || 0), 0);
-        return Math.max(0, Math.round((Number(row.valor || 0) - settled) * 100) / 100);
-    }
 
     async function settleLaunch(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -461,9 +517,10 @@ function App() {
                 },
                 company.id,
             );
-            setModal(null);
-            setSelectedRow(null);
             await reloadCurrent();
+            if (activeCompanyId.current !== company.id) return;
+            if (settlementOverlay) setSettlementOverlay(false);
+            else { setModal(null); setSelectedRow(null); }
             notify("Baixa registrada e status atualizado.");
         } catch (e) {
             notify(e instanceof Error ? e.message : "Não foi possível registrar a baixa.", "error");
@@ -478,6 +535,7 @@ function App() {
         setBusy(true);
         try {
             await api(`/${key}/${row.id}`, { method: "DELETE" }, company.id);
+            if (activeCompanyId.current !== company.id) return;
             setDashboardData(current => ({ ...current, [key]: (current[key] || []).filter(item => item.id !== row.id) }));
             await reloadCurrent();
             notify("Baixa removida e saldo atualizado.");
@@ -495,18 +553,20 @@ function App() {
                     .catch(() => [item.key, []] as const),
             ),
         );
+        if (activeCompanyId.current !== company.id) return;
         const data = Object.fromEntries(results);
         setDashboardData(data);
         setLookups(data);
         const cash = await api(`/caixa?saldo_inicial=${cashInitial}`, {}, company.id).catch(() => ({
             data: [],
         }));
-        setCashRows(cash.data || []);
+        if (activeCompanyId.current === company.id) setCashRows(cash.data || []);
     }
 
     async function createPerson(values: Row): Promise<Row> {
         if (!company) throw new Error("Selecione uma empresa.");
         const result = await api("/pessoas", { method: "POST", body: JSON.stringify(values) }, company.id);
+        if (activeCompanyId.current !== company.id) throw new Error("A empresa selecionada foi alterada.");
         const row = { ...values, id: result.id };
         setLookups(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
         setDashboardData(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
@@ -517,7 +577,7 @@ function App() {
         if (!company || !resource || !window.confirm(`Excluir este registro de ${resource.singular}?`))
             return;
         try {
-            await api(`${resource.endpoint}/${row.id}`, { method: "DELETE" }, company.id);
+            await api(`${resource.key === "baixas" ? "/" + row.origem : resource.endpoint}/${row.id}`, { method: "DELETE" }, company.id);
             notify("Registro excluído.");
             await reloadCurrent();
         } catch (e) {
@@ -567,6 +627,7 @@ function App() {
                 <div className="onboarding-card"><div className="onboarding-icon"><Icon name="bank" size={26} /></div><span className="eyebrow muted">ACESSO PENDENTE</span><h1>Você ainda não possui<br />uma empresa vinculada.</h1><p>Peça a um administrador para vincular seu usuário a uma empresa.</p><button className="text-button" onClick={logout}>Sair da conta</button></div>
             </main>
         );
+    const currentAccount = selectedRow && (dashboardData.lancamentos || []).find(row => row.id === selectedRow.id) || selectedRow;
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
         { key: "lancamentos", title: "Contas", icon: "arrows", section: "FINANCEIRO" },
@@ -575,17 +636,16 @@ function App() {
         { key: "formas", title: "Formas de pagamento", icon: "card", section: "CADASTROS" },
         { key: "bancos", title: "Bancos", icon: "bank", section: "CADASTROS" },
         { key: "planos", title: "Planos de contas", icon: "grid", section: "CADASTROS" },
-        { key: "movimentacoes", title: "Movimentações", icon: "arrowDown", section: "FINANCEIRO" },
-        { key: "recebimentos", title: "Recebimentos", icon: "arrowUp", section: "FINANCEIRO" },
+        { key: "baixas", title: "Baixas", icon: "arrows", section: "FINANCEIRO" },
     ];
     const grouped = ["WORKSPACE", "FINANCEIRO", "CADASTROS"];
     const visibleRows = dashboardData.lancamentos || [];
     const cashIn = visibleRows
         .filter((item) => item.tipo === "receber" && item.status !== "cancelado" && item.status !== "pago")
-        .reduce((sum, item) => sum + remainingAmount(item), 0);
+        .reduce((sum, item) => sum + remainingAmount(item, dashboardData), 0);
     const cashOut = visibleRows
         .filter((item) => item.tipo === "pagar" && item.status !== "cancelado" && item.status !== "pago")
-        .reduce((sum, item) => sum + remainingAmount(item), 0);
+        .reduce((sum, item) => sum + remainingAmount(item, dashboardData), 0);
     const overdue = visibleRows.filter(
         (item) =>
             item.status === "pendente" &&
@@ -630,7 +690,7 @@ function App() {
             const record = (lookups[source] || []).find((item) => item.id === value);
             return record ? String(record.nome || record.descricao || "—") : String(value).slice(0, 8);
         }
-        if (key === "valor") return currency(Number(value));
+        if (key === "valor" || key === "saldo") return currency(Number(value));
         if (key.startsWith("data_")) return date(value);
         if (typeof value === "boolean") return value ? "Sim" : "Não";
         if (key === "tipo")
@@ -656,7 +716,7 @@ function App() {
     return (
         <>
             <div className="app-shell">
-                <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+                <aside inert={Boolean(modal)} id="main-navigation" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
                     <div className="sidebar-brand">
                         <span className="brand-mark">
                             <Icon name="trend" size={20} />
@@ -664,11 +724,11 @@ function App() {
                         <span>
                             Fluxo<span className="brand-dot">.</span>
                         </span>
-                        <button className="mobile-close" onClick={() => setMobileNav(false)}>
+                        <button className="mobile-close" aria-label="Fechar menu" onClick={() => setMobileNav(false)}>
                             <Icon name="close" />
                         </button>
                     </div>
-                    <button className="company-switch" onClick={() => setCompanyMenu(!companyMenu)}>
+                    <button className="company-switch" aria-label={"Selecionar empresa: " + company.nome} onClick={() => setCompanyMenu(!companyMenu)}>
                         <span className="company-avatar">{company.nome.slice(0, 1).toUpperCase()}</span>
                         <span className="company-info">
                             <b>{company.nome}</b>
@@ -702,6 +762,7 @@ function App() {
                                     .map((item) => (
                                         <button
                                             key={item.key}
+                                            aria-label={item.title} title={item.title}
                                             className={`nav-item ${page === item.key ? "active" : ""}`}
                                             onMouseEnter={() => preloadPage(item.key)}
                                             onFocus={() => preloadPage(item.key)}
@@ -753,12 +814,13 @@ function App() {
                         aria-label="Fechar navegação"
                     />
                 )}
-                <main className="main-area">
+                <main className="main-area" inert={Boolean(modal)}>
                     <header className="topbar">
                         <div className="topbar-left">
                             <button
                                 className="mobile-menu"
                                 aria-label="Abrir navegação"
+                                aria-expanded={mobileNav} aria-controls="main-navigation"
                                 onClick={() => setMobileNav(true)}
                             >
                                 <Icon name="menu" />
@@ -770,6 +832,11 @@ function App() {
                             </div>
                         </div>
                         <div className="topbar-actions">
+                            <div className="zoom-controls" role="group" aria-label="Zoom da interface">
+                                <button type="button" aria-label="Diminuir zoom" title="Diminuir zoom" disabled={zoom <= 80} onClick={() => setZoom(value => Math.max(80, value - 10))}>−</button>
+                                <output aria-live="polite">{zoom}%</output>
+                                <button type="button" aria-label="Aumentar zoom" title="Aumentar zoom" disabled={zoom >= 120} onClick={() => setZoom(value => Math.min(120, value + 10))}>+</button>
+                            </div>
                             <span className="today-label">
                                 <Icon name="calendar" size={16} />
                                 {new Intl.DateTimeFormat("pt-BR", {
@@ -888,6 +955,7 @@ function App() {
                             />
                         ) : resource ? (
                             <ResourcePage
+                                key={company.id + resource.key}
                                 resource={resource}
                                 company={company}
                                 rows={currentRows}
@@ -897,10 +965,10 @@ function App() {
                                 formatValue={displayValue}
                                 onSearch={setSearch}
                                 dateFilters={dateFilters}
-                                onDateFiltersChange={settlementPage ? (filters) => setSettlementFilters((current) => ({
-                                    ...current,
-                                    [settlementPage]: filters,
-                                })) : undefined}
+                                onDateFiltersChange={page === "baixas" ? setSettlementFilters : undefined}
+                                personFilters={page === "pessoas" ? personFilters : undefined}
+                                onPersonFiltersChange={page === "pessoas" ? setPersonFilters : undefined}
+                                paymentForms={lookups.formas || []}
                                 onCreate={() => {
                                     setSelectedRow(null);
                                     setModal("create");
@@ -914,7 +982,7 @@ function App() {
                                 onLancamentoFiltersChange={
                                     page === "lancamentos" ? setLancamentoFilters : undefined
                                 }
-                                onRemoveSettlement={(row) => { setSelectedRow(row); setModal("unsettle"); }}
+                                onShowSettlements={(row) => { setSelectedRow(row); setModal("details"); }}
                                 hasSettlements={(row) => (dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || []).some(item => item.lancamento_id === row.id)}
                                 onSettle={(row) => {
                                     setSelectedRow(row);
@@ -929,11 +997,12 @@ function App() {
                 {modal && (
                     <div
                         className="modal-backdrop"
+                        inert={settlementOverlay}
                         onMouseDown={(event) => {
                             if (event.target === event.currentTarget) setModal(null);
                         }}
                     >
-                        <section className="modal-card">
+                        <section className={`modal-card ${modal === "details" || (modal === "edit" && resource?.key === "lancamentos") ? "account-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -941,7 +1010,7 @@ function App() {
                                             ? "NOVA EMPRESA"
                                             : modal === "company-edit"
                                               ? "EDITAR EMPRESA"
-                                              : modal === "unsettle"
+                                              : modal === "details"
                                               ? "BAIXAS DA CONTA"
                                               : modal === "settle"
                                               ? "BAIXA DA CONTA"
@@ -954,15 +1023,15 @@ function App() {
                                             ? "Cadastre sua empresa"
                                             : modal === "company-edit"
                                               ? "Editar empresa"
-                                              : modal === "unsettle"
-                                              ? "Remover baixa"
+                                              : modal === "details"
+                                              ? "Detalhes das baixas"
                                               : modal === "settle"
                                               ? selectedRow?.tipo === "receber"
                                                   ? "Registrar recebimento"
                                                   : "Registrar pagamento"
                                               : modal === "edit"
-                                                ? `Editar ${resource?.singular}`
-                                                : `${resource?.key === "lancamentos" ? "Nova" : "Novo"} ${resource?.singular}`}
+                                                ? `Editar ${resource?.singular}${resource?.key === "lancamentos" && currentAccount?.numero ? " nº " + currentAccount.numero : ""}`
+                                                : `${["lancamentos", "baixas"].includes(resource?.key || "") ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
                                 <button className="icon-button" onClick={() => setModal(null)}>
@@ -970,27 +1039,11 @@ function App() {
                                 </button>
                             </div>
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
-                            {modal === "unsettle" && selectedRow ? (
+                            {modal === "details" && currentAccount ? (
                                 <div className="record-form">
-                                    <p><b>{String(selectedRow.descricao)}</b></p>
-                                    <div className="table-wrap">
-                                        <table className="data-table settlement-table">
-                                            <thead><tr><th>Data</th><th>Forma de pagamento</th><th>Valor</th><th aria-label="Ações" /></tr></thead>
-                                            <tbody>
-                                                {(dashboardData[selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [])
-                                                    .filter(item => item.lancamento_id === selectedRow.id)
-                                                    .map(item => (
-                                                        <tr key={String(item.id)}>
-                                                            <td>{displayValue("data_vencimento", item.data_recebimento || item.data_movimentacao)}</td>
-                                                            <td>{displayValue("forma_pagamento_id", item.forma_pagamento_id)}</td>
-                                                            <td>{displayValue("valor", item.valor)}</td>
-                                                            <td><button type="button" className="icon-button" title="Remover esta baixa" aria-label="Remover esta baixa" disabled={busy} onClick={() => removeSettlement(item)}><Icon name="trash" size={16} /></button></td>
-                                                        </tr>
-                                                    ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {!(dashboardData[selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes"] || []).some(item => item.lancamento_id === selectedRow.id) && <p role="status">Esta conta não possui baixas.</p>}
+                                    <p><b>{displayValue("pessoa_id", currentAccount.pessoa_id)} · {String(currentAccount.descricao)}</b></p>
+                                    <AccountSettlements account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                        onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />
                                     <div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={() => setModal(null)}>Fechar</button></div>
                                 </div>
                             ) : modal === "company-edit" ? (
@@ -1021,73 +1074,11 @@ function App() {
                                         </button>
                                     </div>
                                 </form>
-                            ) : modal === "settle" && selectedRow ? (
-                                <form onSubmit={settleLaunch} className="record-form">
-                                    <div
-                                        className={`settle-summary ${selectedRow.tipo === "receber" ? "income-settle" : "expense-settle"}`}
-                                    >
-                                        <span>
-                                            {selectedRow.tipo === "receber" ? "Recebimento" : "Pagamento"} ·{" "}
-                                            {String(selectedRow.descricao)}
-                                        </span>
-                                        <b>Saldo em aberto: {currency(remainingAmount(selectedRow))}</b>
-                                    </div>
-                                    <div className="form-grid">
-                                        <label className="form-field full-field">
-                                            Forma de pagamento
-                                            <select name="forma_pagamento_id" required defaultValue="">
-                                                <option value="">Selecione uma forma de pagamento</option>
-                                                {(lookups.formas || [])
-                                                    .filter((item) => item.ativo !== false)
-                                                    .map((item) => (
-                                                        <option key={String(item.id)} value={String(item.id)}>
-                                                            {String(item.descricao)}
-                                                        </option>
-                                                    ))}
-                                            </select>
-                                        </label>
-                                        <label className="form-field">
-                                            Valor da baixa
-                                            <input
-                                                name="valor"
-                                                type="number"
-                                                min="0.01"
-                                                max={remainingAmount(selectedRow)}
-                                                step="0.01"
-                                                required
-                                                defaultValue={remainingAmount(selectedRow).toFixed(2)}
-                                            />
-                                        </label>
-                                        <label className="form-field">
-                                            Data
-                                            <input
-                                                name="data"
-                                                type="date"
-                                                defaultValue={new Date().toISOString().slice(0, 10)}
-                                            />
-                                        </label>
-                                    </div>
-                                    <p className="settle-hint">
-                                        Você pode informar o valor total ou fazer uma baixa parcial.
-                                    </p>
-                                    <div className="modal-actions">
-                                        <button
-                                            type="button"
-                                            className="button button-quiet"
-                                            onClick={() => {
-                                                setModal(null);
-                                                setSelectedRow(null);
-                                            }}
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button className="button button-primary" disabled={busy}>
-                                            {busy && <span className="spinner" />} Confirmar baixa{" "}
-                                            <span>→</span>
-                                        </button>
-                                    </div>
-                                </form>
+                            ) : modal === "settle" && currentAccount ? (
+                                <SettlementForm account={currentAccount} paymentForms={lookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                                    busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => { setModal(null); setSelectedRow(null); }} />
                             ) : (
+                                <>
                                 <form onSubmit={saveRecord} className="record-form">
                                     {resource && (
                                         <RecordFormFields
@@ -1105,16 +1096,7 @@ function App() {
                                                 Forma para baixa imediata{" "}
                                                 <span className="optional-label">Opcional</span>
                                             </span>
-                                            <select name="forma_pagamento_id" defaultValue="">
-                                                <option value="">Selecione para cadastrar e dar baixa</option>
-                                                {(lookups.formas || [])
-                                                    .filter((item) => item.ativo !== false)
-                                                    .map((item) => (
-                                                        <option key={String(item.id)} value={String(item.id)}>
-                                                            {String(item.descricao)}
-                                                        </option>
-                                                    ))}
-                                            </select>
+                                            <Combobox name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(lookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
                                         </label>
                                     )}
                                     <div className="modal-actions">
@@ -1139,11 +1121,26 @@ function App() {
 
                                     </div>
                                 </form>
+                                {modal === "edit" && resource?.key === "lancamentos" && currentAccount &&
+                                    <AccountSettlements account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                        onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />}
+                                </>
                             )}
                             </Suspense>
                         </section>
                     </div>
                 )}
+                {settlementOverlay && currentAccount && <div className="modal-backdrop settlement-overlay" onMouseDown={event => {
+                    if (event.target === event.currentTarget && !busy) setSettlementOverlay(false);
+                }}>
+                    <section className="modal-card" role="dialog" aria-modal="true" aria-label="Registrar baixa">
+                        <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
+                            <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
+                        </div>
+                        <SettlementForm account={currentAccount} paymentForms={lookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                            busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
+                    </section>
+                </div>}
                 {toast && (
                     <div className={`toast toast-${toast.type}`} role="status">
                         <span className="toast-check">

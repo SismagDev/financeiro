@@ -29,7 +29,9 @@ const valor = z.coerce.number().positive();
 const schema = {
     table: "lancamentos",
     fields: [
+        "numero",
         "descricao",
+        "observacoes",
         "valor",
         "tipo",
         "status",
@@ -45,6 +47,7 @@ const schema = {
     searchFields: ["descricao"],
     create: z.object({
         descricao: text(),
+        observacoes: z.string().trim().max(5000).nullable().optional(),
         valor,
         tipo,
         status: status.optional(),
@@ -56,6 +59,7 @@ const schema = {
     }).strict(),
     patch: strictObject({
         descricao: optionalText(),
+        observacoes: z.string().trim().max(5000).nullable().optional(),
         valor: optionalMoney,
         tipo: tipo.optional(),
         data_vencimento: optionalDate,

@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS observacoes TEXT;
+ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS observacoes TEXT;
+
+COMMIT;

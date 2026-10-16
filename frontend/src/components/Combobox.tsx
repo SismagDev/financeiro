@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 type Props = {
     options: [string, string][];
@@ -22,10 +22,27 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
     allowCustom, placeholder = "Selecione uma opção", label, maxLength, onCreate, filterOption, emptyLabel = "Não selecionado" }: Props) {
     const id = useId();
     const input = useRef<HTMLInputElement>(null);
+    const root = useRef<HTMLDivElement>(null);
     const [selected, setSelected] = useState(defaultValue);
     const [query, setQuery] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(-1);
+    useEffect(() => {
+        if (!open) return;
+        const close = () => { setOpen(false); setQuery(null); setActive(-1); };
+        const outside = (event: Event) => {
+            if (event.target instanceof Node && !root.current?.contains(event.target)) close();
+        };
+        // No toque, um botão pode não receber foco. O blur sem destino não significa saída da lista.
+        document.addEventListener("pointerdown", outside, true);
+        document.addEventListener("focusin", outside, true);
+        window.addEventListener("blur", close);
+        return () => {
+            document.removeEventListener("pointerdown", outside, true);
+            document.removeEventListener("focusin", outside, true);
+            window.removeEventListener("blur", close);
+        };
+    }, [open]);
     const current = value ?? selected;
     const selectedLabel = options.find(([key]) => key === current)?.[1] ?? current;
     const matches = options.filter(([key, text]) => filterOption ? filterOption(key, query ?? "") :
@@ -48,9 +65,7 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
             else { setOpen(false); setQuery(null); }
         }
     }
-    return <div className="combobox" onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setQuery(null); setActive(-1); }
-    }}>
+    return <div ref={root} className="combobox">
         {name && <input type="hidden" name={name} value={current} disabled={disabled} />}
         <div className="combobox-control">
             <input ref={input} type="search" id={id} role="combobox" aria-label={label} aria-expanded={open}

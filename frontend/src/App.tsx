@@ -230,7 +230,7 @@ function App() {
     const [zoom, setZoom] = useState(100);
     useEffect(() => {
         document.documentElement.style.setProperty("--app-zoom", String(zoom / 100));
-        return () => document.documentElement.style.removeProperty("--app-zoom");
+        return () => { document.documentElement.style.removeProperty("--app-zoom"); };
     }, [zoom]);
     const currentMonth = new Date();
     const [lancamentoFilters, setLancamentoFilters] = useState<{

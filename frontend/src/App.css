@@ -2952,3 +2952,42 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
     .page-dashboard .chart-y { flex: 0 0 auto; width: auto; padding-right: 8px; font-size: 11px; white-space: nowrap; }
     .page-dashboard .chart-content { min-width: 0; }
 }
+
+/* Cabeçalhos permanecem inteiros; a rolagem fica no contêiner da tabela. */
+.data-table thead th, .data-table thead th button,
+.table-wrap thead th, .table-wrap thead th button { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+
+@media (max-width: 700px) {
+    .resource-lancamentos { min-width: 1100px; }
+    .resource-pessoas { min-width: 800px; }
+    .resource-lancamentos thead th, .resource-lancamentos tbody td,
+    .resource-pessoas thead th, .resource-pessoas tbody td { font-size: 13px; }
+    :is(.resource-lancamentos, .resource-pessoas, .resource-baixas) td.nowrap-cell { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+    :is(.resource-lancamentos, .resource-pessoas) td.text-cell { min-width: 180px; max-width: 280px; white-space: normal; overflow-wrap: break-word; word-break: normal; }
+    .resource-lancamentos .type-label, .resource-lancamentos .status-pill, .resource-lancamentos .account-number { font-size: 13px; white-space: nowrap; }
+    .resource-lancamentos .balance-cell { white-space: nowrap; }
+
+    .people-role-filters { gap: 0 12px; align-items: center; }
+    .people-role-filters .paid-filter { min-height: 44px; padding: 6px 0; font-size: 14px; }
+
+    .filter-button.clear-settlement-search, .filter-button.reset-settlement-filters { width: auto; min-height: 44px; padding: 10px 12px; gap: 6px; font-size: 13px; }
+    .page-baixas .settlement-filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .page-baixas .settlement-filter-row > .filter-search,
+    .page-baixas .settlement-filter-row > label:has(.combobox),
+    .page-baixas .clear-settlement-search { grid-column: 1 / -1; }
+    .page-baixas .clear-settlement-search { justify-self: start; margin-left: 0; }
+
+    :is(.page-lancamentos .launch-filters-fields, .page-baixas .settlement-filter-row) > label:has(> input[type=date]) { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    :is(.page-lancamentos .launch-filters-fields, .page-baixas .settlement-filter-row) > label > input[type=date] {
+        display: block; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%;
+        min-inline-size: 0; inline-size: 100%; max-inline-size: 100%;
+        height: 44px; min-height: 44px; margin-top: 0; padding: 9px 10px;
+        font-size: 16px; line-height: 24px; text-align: left; -webkit-appearance: none; appearance: none;
+    }
+    :is(.page-lancamentos .launch-filters-fields, .page-baixas .settlement-filter-row) input[type=date]::-webkit-date-and-time-value { min-height: 24px; text-align: left; }
+    :is(.page-lancamentos .launch-filters-fields, .page-baixas .settlement-filter-row) input[type=date]::-webkit-datetime-edit { padding: 0; }
+    :is(.page-lancamentos .launch-filters-fields, .page-baixas .settlement-filter-row) input[type=date]::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+}
+@media (max-width: 400px) {
+    .page-baixas .settlement-filter-row { grid-template-columns: minmax(0, 1fr); }
+}

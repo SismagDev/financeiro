@@ -123,6 +123,8 @@ export function ResourcePage({
     const sortable = ["lancamentos", "baixas"].includes(resource.key);
     const columnClass = (key: string) => [
         key === "numero" ? "account-number" : "",
+        ["numero", "empresa_identificador", "num_doc", "tipo", "natureza", "competencia", "documento", "celular", "responsavel_cpf", "valor", "saldo", "status", "cliente", "fornecedor"].includes(key) || key.startsWith("data_") ? "nowrap-cell" : "",
+        ["nome", "descricao", "razao_social", "endereco", "pessoa_id", "observacoes"].includes(key) ? "text-cell" : "",
         resource.key === "pessoas" && ["cliente", "fornecedor"].includes(key) ? "person-role-cell" : "",
         (showSettlement && ["competencia", "plano_conta_id"].includes(key)) ||
         (resource.key === "pessoas" && ["razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "observacoes"].includes(key)) ? "mobile-secondary" : "",

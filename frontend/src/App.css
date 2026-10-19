@@ -2932,3 +2932,23 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .company-option input { width: 18px; height: 18px; flex-shrink: 0; accent-color: #318459; }
 .page-heading .company-filter { margin-top: 14px; }
 @media (max-width: 640px) { .company-filter { min-width: 150px; flex: 1; } }
+
+/* Ajustes locais de leitura e toque em celulares. */
+@media (max-width: 600px) {
+    .resource-baixas { min-width: 720px; }
+    .resource-formas { min-width: 560px; }
+    .resource-baixas th, .resource-formas th { white-space: nowrap; }
+    .resource-baixas td, .resource-formas td { overflow-wrap: normal; word-break: normal; }
+    .page-baixas .settlement-filter-row > label:has(.combobox) { flex-basis: 100%; }
+
+    .page-caixa .summary-foot label { display: flex; flex-direction: column; gap: 6px; width: 100%; font-size: 12px; }
+    .page-caixa .cash-input { width: 100%; min-width: 0; min-height: 42px; padding: 8px; border: 1px solid var(--control-border); border-radius: 8px; background: #fff; color: #26362e; font: inherit; font-size: 16px; }
+
+    .page-dashboard .summary-top { font-size: 12px; }
+    .page-dashboard .summary-foot { flex-wrap: wrap; gap: 6px; font-size: 11px; line-height: 1.4; }
+    .page-dashboard .summary-trend svg { flex-shrink: 0; }
+    .page-dashboard .chart-panel > .panel-heading { flex-wrap: wrap; }
+    .page-dashboard .select-chip, .page-dashboard .chart-legend, .page-dashboard .bar-group { font-size: 11px; }
+    .page-dashboard .chart-y { flex: 0 0 auto; width: auto; padding-right: 8px; font-size: 11px; white-space: nowrap; }
+    .page-dashboard .chart-content { min-width: 0; }
+}

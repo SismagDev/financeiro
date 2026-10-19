@@ -17,6 +17,7 @@ type Company = {
     id: string;
     nome: string;
     cnpj: string | null;
+    identificador: string | null;
     ativo: boolean;
     licenca_expira_em: string | null;
     licenca_status: "ativa" | "vencida";
@@ -110,7 +111,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
         event.preventDefault();
         setError("");
         const values = Object.fromEntries(new FormData(event.currentTarget));
-        const payload = { nome: values.nome, cnpj: values.cnpj || null };
+        const payload = { nome: values.nome, cnpj: values.cnpj || null, identificador: String(values.identificador || "").trim() || null };
         try {
             if (editingCompany)
                 await request(`/admin/companies/${editingCompany.id}`, {
@@ -344,6 +345,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                 </div>
                 {(creatingCompany || editingCompany) && (
                     <form className="admin-company-form" onSubmit={saveCompany}>
+                        <label>Identificador <span className="optional-label">Opcional</span><input name="identificador" defaultValue={editingCompany?.identificador || ""} placeholder="Ex.: PF, PJ, F1" /></label>
                         <label>
                             Nome
                             <input name="nome" defaultValue={editingCompany?.nome} required minLength={2} />

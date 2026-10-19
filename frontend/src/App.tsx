@@ -2,6 +2,8 @@ import { useMessageBox } from "./hooks/useMessageBox";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
+import { CompanySelect } from "./components/CompanySelect";
+import { companyRows, loadCompanyResources, toggleCompany } from "./utils/companies";
 import { Combobox } from "./components/Combobox";
 import { matchesAccount, matchesSettlementFilters, remainingAmount } from "./utils/accounts";
 import { Icon } from "./components/Icon";
@@ -209,18 +211,42 @@ function App() {
     const [authChecked, setAuthChecked] = useState(false);
     const [companies, setCompanies] = useState<Company[]>([]);
     const [company, setCompany] = useState<Company | null>(null);
+    const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+    const [companyFilter, setCompanyFilter] = useState("");
+    const [formCompany, setFormCompany] = useState("");
+    const [loadError, setLoadError] = useState("");
+    const loadVersion = useRef(0);
+    const formVersion = useRef(0);
+    const selectedCompanies = useMemo(() => companies.filter(item => selectedCompanyIds.includes(item.id)), [companies, selectedCompanyIds]);
     const activeCompanyId = useRef<string | null>(null);
     const [page, setPage] = useState(() => pageFromPath(window.location.pathname));
     const [loadedCompanyId, setLoadedCompanyId] = useState<string | null>(null);
     const warningMemory = useRef<Record<string, string>>({});
-    const [dashboardData, setDashboardData] = useState<Record<string, Row[]>>({});
+
     const [lookups, setLookups] = useState<Record<string, Row[]>>({});
-    const [cashRows, setCashRows] = useState<Row[]>([]);
+    const dashboardData = useMemo(() => companyRows(lookups, selectedCompanyIds, companyFilter), [lookups, selectedCompanyIds, companyFilter]);
+
     const [cashInitial, setCashInitial] = useState(0);
+    const cashRows = useMemo(() => {
+        const rows: Row[] = [];
+        let balance = cashInitial;
+        for (const row of [...(dashboardData.cash || [])].sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.id).localeCompare(String(b.id)))) {
+            const before = balance;
+            balance = Math.round((balance + Number(row.valor)) * 100) / 100;
+            rows.push({ ...row, saldo_antes: before, saldo_depois: balance });
+        }
+        return rows;
+    }, [dashboardData.cash, cashInitial]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [modal, setModal] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
+    const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
+    function setModal(next: typeof modal) {
+        if (next === "create") { formVersion.current++; setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); }
+        setModalState(next);
+    }
+    const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
+    const formLookups = useMemo(() => companyRows(lookups, selectedCompanyIds, formCompanyId), [lookups, selectedCompanyIds, formCompanyId]);
     const [search, setSearch] = useState("");
     const [settlementFilters, setSettlementFilters] = useState({
         dataInicial: "", dataFinal: "", formaPagamento: "", mostrarRecebimentos: true, mostrarPagamentos: true,
@@ -316,12 +342,16 @@ function App() {
         return () => window.removeEventListener("popstate", onPopState);
     }, [page]);
 
-    const loadCompanies = useCallback(async () => {
+    const loadCompanies = useCallback(async (userId?: string) => {
         const result = await api("/empresas");
         const list: Company[] = result.data || [];
         setCompanies(list);
-        const saved = localStorage.getItem("fluxo-company");
-        const chosen = list.find((item) => item.id === saved) || list[0] || null;
+        let saved: string[] = [];
+        try { saved = JSON.parse(localStorage.getItem("fluxo-companies:" + (userId || "")) || "[]"); } catch { /* Usa a primeira empresa se a preferência estiver inválida. */ }
+        const selected = list.filter(item => Array.isArray(saved) && saved.includes(item.id));
+        const chosen = selected[0] || list[0] || null;
+        setSelectedCompanyIds(selected.length ? selected.map(item => item.id) : chosen ? [chosen.id] : []);
+        setCompanyFilter("");
         activeCompanyId.current = chosen?.id ?? null;
         setCompany(chosen);
         if (chosen) localStorage.setItem("fluxo-company", chosen.id);
@@ -335,7 +365,7 @@ function App() {
             .then((result) => {                setUser(result.data);
                 setAuthChecked(true);
                 if (result.data.role === "admin") { setLoading(false); return; }
-                return loadCompanies();
+                return loadCompanies(result.data.id);
             })
             .catch(() => {
                 setUser(null);
@@ -344,32 +374,27 @@ function App() {
             });
     }, [loadCompanies]);
 
-    useEffect(() => {
-        if (!user) return;
-        if (!companies.length) return;
-        if (!company) return;
-        if (company.licenca_status === "vencida") return;
-        let cancelled = false;
-        const endpoints = resources.map((item) =>
-            api(item.endpoint, {}, company.id)
-                .then((result: { data: Row[] }) => [item.key, result.data] as const)
-                .catch(() => [item.key, []] as const),
-        );
-        Promise.all([
-            ...endpoints,
-            api(`/caixa?saldo_inicial=${cashInitial}`, {}, company.id).catch(() => ({ data: [] })),
-        ]).then((results) => {
-            if (cancelled || activeCompanyId.current !== company.id) return;
-            const cash = results.pop() as { data: Row[] } | undefined;
-            const data = Object.fromEntries(results);
-            setLoadedCompanyId(company.id);
-            setDashboardData(data);
+    const fetchResources = useCallback(async () => {
+        const version = ++loadVersion.current;
+        if (!selectedCompanies.length) return;
+        setLoading(true); setLoadError("");
+        try {
+            const data = await loadCompanyResources(selectedCompanies.filter(item => item.licenca_status !== "vencida"),
+                [...resources, { key: "cash", endpoint: "/caixa?saldo_inicial=0" }], api);
+            if (version !== loadVersion.current) return;
             setLookups(data);
-            setCashRows(cash?.data || []);
-            setLoading(false);
-        });
-        return () => { cancelled = true; };
-    }, [user, company, companies.length, page, cashInitial]);
+            setLoadedCompanyId(selectedCompanies[0].id);
+        } catch (error) {
+            if (version !== loadVersion.current) return;
+            setLookups({});
+            setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os dados.");
+        } finally { if (version === loadVersion.current) setLoading(false); }
+    }, [selectedCompanies]);
+    useEffect(() => {
+        const version = loadVersion;
+        const frame = window.requestAnimationFrame(() => { void fetchResources(); });
+        return () => { window.cancelAnimationFrame(frame); version.current++; };
+    }, [fetchResources, page]);
 
     const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
     const currentRows = useMemo<Row[]>(() => {
@@ -428,7 +453,7 @@ function App() {
         if (nextUser.role === "admin") { setLoading(false); return; }
         setLoading(true);
         try {
-            await loadCompanies();
+            await loadCompanies(nextUser.id);
         } catch {
             setCompanies([]);
             activeCompanyId.current = null;
@@ -443,24 +468,32 @@ function App() {
             setUser(null);
             activeCompanyId.current = null;
             setLoadedCompanyId(null); setNotificationsOpen(false);
-            setDashboardData({}); setLookups({}); setCashRows([]);
+            setLookups({});
             setCompany(null);
-            setCompanies([]);
+            setCompanies([]); setSelectedCompanyIds([]); setCompanyFilter(""); loadVersion.current++;
             localStorage.removeItem("fluxo-company");
         }
     }
-    async function changeCompany(next: Company) {
-        activeCompanyId.current = next.id;
+    function changeCompany(next: Company) {
+        const ids = toggleCompany(selectedCompanyIds, next.id);
+        if (ids === selectedCompanyIds) return;
+        loadVersion.current++; formVersion.current++;
+        setSelectedCompanyIds(ids); setLookups({}); setLoading(true);
+        const first = companies.find(item => ids.includes(item.id)) || null;
+        activeCompanyId.current = first?.id || null;
+        setCompany(first);
         setLoadedCompanyId(null); setNotificationsOpen(false);
-        setDashboardData({}); setLookups({}); setCashRows([]);
-        setSelectedRow(null); setModal(null); setSettlementOverlay(false); setLoading(true);
+        setModal(null); setSelectedRow(null); setSettlementOverlay(false);
+        if (companyFilter && !ids.includes(companyFilter)) setCompanyFilter("");
         setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
         setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
-        setCompany(next);
-        localStorage.setItem("fluxo-company", next.id);
-        setCompanyMenu(false);
-        if (next.licenca_status === "vencida") notify("A licença desta empresa expirou.", "error");
-        navigate("dashboard");
+        localStorage.setItem("fluxo-companies:" + user?.id, JSON.stringify(ids));
+    }
+
+    function changeCompanyFilter(id: string) {
+        setCompanyFilter(id);
+        setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
+        setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
     }
 
     async function saveRecord(event: FormEvent<HTMLFormElement>) {
@@ -520,7 +553,7 @@ function App() {
                             : {}),
                     }),
                 },
-                company.id,
+                formCompanyId,
             );
             notify(
                 editing
@@ -556,7 +589,7 @@ function App() {
                         data: values.data,
                     }),
                 },
-                company.id,
+                String(selectedRow.empresa_id),
             );
             await reloadCurrent();
             if (activeCompanyId.current !== company.id) return;
@@ -576,9 +609,9 @@ function App() {
         const key = selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes";
         setBusy(true);
         try {
-            await api(`/${key}/${row.id}`, { method: "DELETE" }, company.id);
+            await api(`/${key}/${row.id}`, { method: "DELETE" }, String(selectedRow.empresa_id));
             if (activeCompanyId.current !== company.id) return;
-            setDashboardData(current => ({ ...current, [key]: (current[key] || []).filter(item => item.id !== row.id) }));
+
             await reloadCurrent();
             notify("Baixa removida e saldo atualizado.");
         } catch (e) {
@@ -586,33 +619,15 @@ function App() {
         } finally { setBusy(false); }
     }
 
-    async function reloadCurrent() {
-        if (!company) return;
-        const results = await Promise.all(
-            resources.map((item) =>
-                api(item.endpoint, {}, company.id)
-                    .then((result: { data: Row[] }) => [item.key, result.data] as const)
-                    .catch(() => [item.key, []] as const),
-            ),
-        );
-        if (activeCompanyId.current !== company.id) return;
-        const data = Object.fromEntries(results);
-        setLoadedCompanyId(company.id);
-        setDashboardData(data);
-        setLookups(data);
-        const cash = await api(`/caixa?saldo_inicial=${cashInitial}`, {}, company.id).catch(() => ({
-            data: [],
-        }));
-        if (activeCompanyId.current === company.id) setCashRows(cash.data || []);
-    }
+    async function reloadCurrent() { await fetchResources(); }
 
     async function createPerson(values: Row): Promise<Row> {
         if (!company) throw new Error("Selecione uma empresa.");
-        const result = await api("/pessoas", { method: "POST", body: JSON.stringify(values) }, company.id);
-        if (activeCompanyId.current !== company.id) throw new Error("A empresa selecionada foi alterada.");
-        const row = { ...values, id: result.id };
+        const version = formVersion.current;
+        const result = await api("/pessoas", { method: "POST", body: JSON.stringify(values) }, formCompanyId);
+        if (version !== formVersion.current) throw new Error("A empresa selecionada foi alterada.");
+        const row = { ...values, id: result.id, empresa_id: formCompanyId, empresa_identificador: companies.find(item => item.id === formCompanyId)?.identificador ?? null };
         setLookups(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
-        setDashboardData(current => ({ ...current, pessoas: [...(current.pessoas || []), row] }));
         return row;
     }
 
@@ -621,7 +636,7 @@ function App() {
             return;
         if (activeCompanyId.current !== company.id) return;
         try {
-            await api(`${resource.key === "baixas" ? "/" + row.origem : resource.endpoint}/${row.id}`, { method: "DELETE" }, company.id);
+            await api(`${resource.key === "baixas" ? "/" + row.origem : resource.endpoint}/${row.id}`, { method: "DELETE" }, String(row.empresa_id));
             notify("Registro excluído.");
             await reloadCurrent();
         } catch (e) {
@@ -638,8 +653,8 @@ function App() {
             await api(`/empresas/${company.id}`, {
                 method: "PATCH",
                 body: JSON.stringify({ nome: values.nome, ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
-            });
-            await loadCompanies();
+            }, company.id);
+            await loadCompanies(user?.id);
             setModal(null);
             notify("Dados da empresa atualizados.");
         } catch (e) {
@@ -671,6 +686,7 @@ function App() {
                 <div className="onboarding-card"><div className="onboarding-icon"><Icon name="bank" size={26} /></div><span className="eyebrow muted">ACESSO PENDENTE</span><h1>Você ainda não possui<br />uma empresa vinculada.</h1><p>Peça a um administrador para vincular seu usuário a uma empresa.</p><button className="text-button" onClick={logout}>Sair da conta</button></div>
             </main>
         );
+    const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 1} value={companyFilter} onChange={changeCompanyFilter} />;
     const currentAccount = selectedRow && (dashboardData.lancamentos || []).find(row => row.id === selectedRow.id) || selectedRow;
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
@@ -765,26 +781,21 @@ function App() {
                     <button className="company-switch" aria-label={"Selecionar empresa: " + company.nome} onClick={() => setCompanyMenu(!companyMenu)}>
                         <span className="company-avatar">{company.nome.slice(0, 1).toUpperCase()}</span>
                         <span className="company-info">
-                            <b>{company.nome}</b>
+                            <b>{selectedCompanies.length > 1 ? `${selectedCompanies.length} empresas` : company.nome}</b>
                             <small>{company.perfil === "admin" ? "Plano essencial" : "Empresa"}</small>
                         </span>
                         <Icon name="chevron" size={16} />
                     </button>
                     {companyMenu && (
                         <div className="company-dropdown">
-                            {companies.map((item) => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => changeCompany(item)}
-                                    className={
-                                        item.id === company.id ? "company-option current" : "company-option"
-                                    }
-                                >
-                                    <span className="company-avatar small">{item.nome.slice(0, 1)}</span>
-                                    {item.nome}
-                                    {item.id === company.id && <Icon name="check" size={16} />}
-                                </button>
-                            ))}                            <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Editar empresa</button>
+                            <p className="company-selection-hint">Marque as empresas que deseja visualizar. Mantenha ao menos uma selecionada.</p>
+                            {companies.map(item => <label key={item.id} className="company-option">
+                                <input type="checkbox" checked={selectedCompanyIds.includes(item.id)}
+                                    disabled={selectedCompanyIds.length === 1 && selectedCompanyIds.includes(item.id)}
+                                    onChange={() => changeCompany(item)} />
+                                <span>{item.nome}{item.licenca_status === "vencida" && <small> · Licença vencida</small>}</span>
+                            </label>)}
+                           <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Editar empresa</button>
                         </div>
                     )}
                     <nav className="nav-scroll">
@@ -960,12 +971,15 @@ function App() {
                         </div>
                     </header>
                     <div className={`page-content page-${page}`}>
+                        {selectedCompanies.some(item => item.licenca_status === "vencida") && !selectedCompanies.every(item => item.licenca_status === "vencida") && <div className="inline-error" role="status">Dados indisponíveis por licença vencida: {selectedCompanies.filter(item => item.licenca_status === "vencida").map(item => item.nome).join(", ")}.</div>}
+                        {loadError && <div className="inline-error" role="alert">{loadError} <button type="button" className="text-button" onClick={() => void reloadCurrent()}>Tentar novamente</button></div>}
                         <Suspense fallback={<section className="panel page-loading" role="status"><span className="spinner" /><span>Carregando página...</span></section>}>
-                        {company.licenca_status === "vencida" ? (
+                        {selectedCompanies.every(item => item.licenca_status === "vencida") ? (
                             <section className="panel license-expired"><span className="eyebrow muted">LICENÇA VENCIDA</span><h2>Esta empresa está com a licença expirada.</h2><p>Solicite a renovação a um administrador para voltar a utilizar os recursos financeiros.</p></section>
                         ) : page === "dashboard" ? (
                             <DashboardPage
                                 user={user}
+                                companyFilter={companyFilterControl}
                                 rows={visibleRows}
                                 flowRows={flowRows}
                                 cashIn={cashIn}
@@ -981,7 +995,8 @@ function App() {
                             />
                         ) : page === "caixa" ? (
                             <CashPage
-                                key={company.id}
+                                key={selectedCompanyIds.join(",") + ":" + companyFilter}
+                                companyFilter={companyFilterControl}
                                 rows={cashRows as never}
                                 initial={cashInitial}
                                 onInitialChange={setCashInitial}
@@ -991,6 +1006,8 @@ function App() {
                             <ResourcePage
                                 key={company.id + resource.key}
                                 resource={resource}
+                                companyFilter={companyFilterControl}
+                                companyScope={selectedCompanyIds.join(",") + ":" + companyFilter}
                                 company={company}
                                 rows={currentRows}
                                 visibleRows={filteredRows}
@@ -1002,7 +1019,7 @@ function App() {
                                 onDateFiltersChange={page === "baixas" ? setSettlementFilters : undefined}
                                 personFilters={page === "pessoas" ? personFilters : undefined}
                                 onPersonFiltersChange={page === "pessoas" ? setPersonFilters : undefined}
-                                paymentForms={lookups.formas || []}
+                                paymentForms={dashboardData.formas || []}
                                 onCreate={() => {
                                     setSelectedRow(null);
                                     setModal("create");
@@ -1108,18 +1125,21 @@ function App() {
                                     </div>
                                 </form>
                             ) : modal === "settle" && currentAccount ? (
-                                <SettlementForm account={currentAccount} paymentForms={lookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                                <SettlementForm account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                                     busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => { setModal(null); setSelectedRow(null); }} />
                             ) : (
                                 <>
                                 <form onSubmit={saveRecord} className="record-form">
+                                    {modal === "create" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
+                                        value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
                                     {resource && (
                                         <RecordFormFields
                                             key={String(selectedRow?.id || resource.key) + modal}
                                             fields={resource.fields}
                                             onCreatePerson={createPerson}
                                             selectedRow={selectedRow}
-                                            lookups={lookups}
+                                            lookups={formLookups}
+                                            companyId={formCompanyId}
                                             editing={modal === "edit"}
                                         />
                                     )}
@@ -1129,7 +1149,7 @@ function App() {
                                                 Forma para baixa imediata{" "}
                                                 <span className="optional-label">Opcional</span>
                                             </span>
-                                            <Combobox name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(lookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
+                                            <Combobox key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
                                         </label>
                                     )}
                                     <div className="modal-actions">
@@ -1170,7 +1190,7 @@ function App() {
                         <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
                             <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
                         </div>
-                        <SettlementForm account={currentAccount} paymentForms={lookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                        <SettlementForm account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                             busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
                     </section>
                 </div>}

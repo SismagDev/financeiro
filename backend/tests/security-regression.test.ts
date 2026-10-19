@@ -14,12 +14,16 @@ const expiredCompany = "22222222-2222-4222-8222-222222222222";
 const userId = "33333333-3333-4333-8333-333333333333";
 const adminId = "44444444-4444-4444-8444-444444444444";
 let updates = 0;
+let companyValues: unknown[] = [];
 const originalQuery = pool.query.bind(pool);
 const originalConnect = pool.connect.bind(pool);
 let passwordHash = "";
 
 (pool as unknown as { query: typeof pool.query }).query = (async (sql: string, values?: unknown[]) => {
-    if (sql.includes("FROM users_empresas ue")) return { rows: [{ licenca_expira_em: new Date("2099-01-01") }], rowCount: 1 };
+    if (sql.includes("FROM users_empresas ue")) {
+        if (values?.[1] === "55555555-5555-4555-8555-555555555555") return { rows: [], rowCount: 0 };
+        return { rows: [{ licenca_expira_em: new Date("2099-01-01") }], rowCount: 1 };
+    }
     if (sql.includes("from users") || sql.includes("FROM users")) {
         const id = values?.[0];
         if (id === userId) return { rows: [{ id: userId, nome: "Comum", email: "comum@test", role: "comum", ativo: true }], rowCount: 1 };
@@ -29,9 +33,12 @@ let passwordHash = "";
         if (email === "inativo@test") return { rows: [{ id: userId, nome: "Inativo", email, password_hash: passwordHash, role: "comum", ativo: false }], rowCount: 1 };
         return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("FROM users_empresas ue")) return { rows: [{ licenca_expira_em: new Date("2099-01-01") }], rowCount: 1 };
+    if (sql.includes("FROM users_empresas ue")) {
+        if (values?.[1] === "55555555-5555-4555-8555-555555555555") return { rows: [], rowCount: 0 };
+        return { rows: [{ licenca_expira_em: new Date("2099-01-01") }], rowCount: 1 };
+    }
     if (sql.includes("SELECT 1 FROM users_empresas")) return { rows: [{ ok: 1 }], rowCount: 1 };
-    if (sql.includes("UPDATE empresas")) { updates++; return { rows: [{ id: activeCompany }], rowCount: 1 }; }
+    if (sql.includes("UPDATE empresas")) { companyValues = values || []; updates++; return { rows: [{ id: activeCompany }], rowCount: 1 }; }
     if (sql.includes("INSERT INTO users_empresas")) return { rows: [], rowCount: 1 };
     return { rows: [], rowCount: 0 };
 }) as typeof pool.query;
@@ -52,3 +59,33 @@ test("login não revela usuário inexistente, senha inválida ou conta inativa",
 test("serviço compartilhado recusa valor acima do saldo e tipo incompatível", async () => { const client = { query: async (sql: string) => { if (sql.includes("FROM lancamentos")) return { rows: [{ valor: "100.00", tipo: "receber", status: "pendente" }], rowCount: 1 }; return { rows: [{ total: "0" }], rowCount: 1 }; } } as never; await assert.rejects(() => createSettlement(client, activeCompany, "movimentacoes", { lancamentoId: activeCompany, formaPagamentoId: activeCompany, valor: 101 }), SettlementError); });
 
 
+
+test("administrador aceita identificadores repetidos e nulos e preserva o campo quando omitido", async () => {
+    for (const id of [activeCompany, expiredCompany]) {
+        const result = await request(`/admin/companies/${id}`, { method: "PATCH", headers: { "x-test-user": adminId }, body: JSON.stringify({ nome: "Empresa", identificador: " F1 " }) });
+        assert.equal(result.response.status, 200);
+        assert.equal(companyValues[3], true);
+        assert.equal(companyValues[4], "F1");
+    }
+    const cleared = await request(`/admin/companies/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": adminId }, body: JSON.stringify({ nome: "Empresa", identificador: null }) });
+    assert.equal(cleared.response.status, 200);
+    assert.equal(companyValues[4], null);
+    const omitted = await request(`/admin/companies/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": adminId }, body: JSON.stringify({ nome: "Empresa" }) });
+    assert.equal(omitted.response.status, 200);
+    assert.equal(companyValues[3], false);
+});
+test("usuário comum não altera identificador pelo cadastro administrativo nem pela edição da empresa", async () => {
+    const payload = JSON.stringify({ nome: "Empresa", identificador: "F1" });
+    const admin = await request(`/admin/companies/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": userId }, body: payload });
+    assert.equal(admin.response.status, 403);
+    const regular = await request(`/empresas/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: payload });
+    assert.equal(regular.response.status, 400);
+});
+
+test("seleção multiempresa não concede acesso a empresa sem vínculo", async () => {
+    const id = "55555555-5555-4555-8555-555555555555";
+    const before = updates;
+    const result = await request(`/empresas/${id}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": id }, body: JSON.stringify({ nome: "Sem acesso" }) });
+    assert.equal(result.response.status, 403);
+    assert.equal(updates, before);
+});

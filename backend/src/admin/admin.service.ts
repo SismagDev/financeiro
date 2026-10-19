@@ -56,7 +56,7 @@ export async function deleteAdminUser(id: string) {
 }
 
 export async function listCompaniesForAdmin() {
-    const result = await pool.query("SELECT id, nome, cnpj, ativo, created_at, licenca_expira_em, CASE WHEN licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas ORDER BY nome");
+    const result = await pool.query("SELECT id, nome, cnpj, identificador, ativo, created_at, licenca_expira_em, CASE WHEN licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas ORDER BY nome");
     return result.rows;
 }
 
@@ -69,19 +69,19 @@ export async function listCompanyUsersForAdmin(companyId: string) {
     );
     return result.rows;
 }
-export async function createCompanyForAdmin(data: { nome: string; cnpj?: string | null }, adminId: string) {
+export async function createCompanyForAdmin(data: { nome: string; cnpj?: string | null; identificador?: string | null }, adminId: string) {
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        const created = await client.query<{ id: string }>("INSERT INTO empresas (nome, cnpj) VALUES ($1, $2) RETURNING id", [data.nome, data.cnpj ?? null]);
+        const created = await client.query<{ id: string }>("INSERT INTO empresas (nome, cnpj, identificador) VALUES ($1, $2, $3) RETURNING id", [data.nome, data.cnpj ?? null, data.identificador ?? null]);
         await client.query("INSERT INTO users_empresas (user_id, empresa_id, perfil) VALUES ($1, $2, 'admin') ON CONFLICT DO NOTHING", [adminId, created.rows[0].id]);
         await client.query("COMMIT");
         return created.rows[0];
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
 
-export async function updateCompanyForAdmin(id: string, data: { nome: string; cnpj?: string | null }) {
-    const result = await pool.query("UPDATE empresas SET nome = $1, cnpj = $2 WHERE id = $3 RETURNING id", [data.nome, data.cnpj ?? null, id]);
+export async function updateCompanyForAdmin(id: string, data: { nome: string; cnpj?: string | null; identificador?: string | null }) {
+    const result = await pool.query("UPDATE empresas SET nome = $1, cnpj = $2, identificador = CASE WHEN $4::boolean THEN $5::text ELSE identificador END WHERE id = $3 RETURNING id", [data.nome, data.cnpj ?? null, id, data.identificador !== undefined, data.identificador ?? null]);
     return result.rows[0]?.id ?? null;
 }
 

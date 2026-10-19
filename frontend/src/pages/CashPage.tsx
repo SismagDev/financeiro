@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pagination } from "../components/Pagination";
 import { usePagination } from "../hooks/usePagination";
 import type { Row } from "../types";
@@ -18,11 +19,13 @@ function date(value: string) {
 }
 
 export function CashPage({
+    companyFilter,
     rows,
     initial,
     onInitialChange,
     onRefresh,
 }: {
+    companyFilter?: ReactNode;
     rows: CashRow[];
     initial: number;
     onInitialChange: (value: number) => void;
@@ -36,6 +39,7 @@ export function CashPage({
                 <div>
                     <h1>Gestão de caixa</h1>
                     <p>Veja, em ordem, como cada entrada e saída alterou o saldo.</p>
+                    {companyFilter}
                 </div>
                 <button className="button button-primary" onClick={onRefresh}>
                     Atualizar

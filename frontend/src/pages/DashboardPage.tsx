@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { Status } from "../components/Status";
@@ -5,6 +6,7 @@ import type { Row, User } from "../types";
 
 type Props = {
     user: User;
+    companyFilter?: ReactNode;
     rows: Row[];
     flowRows: Row[];
     cashIn: number;
@@ -23,6 +25,7 @@ function currency(value: number) {
 }
 
 export function DashboardPage({
+    companyFilter,
     user,
     rows,
     flowRows,
@@ -62,6 +65,7 @@ export function DashboardPage({
                         Olá, {user.nome?.split(" ")[0] || "tudo bem"} <span className="wave">✳</span>
                     </h1>
                     <p>Aqui está o resumo financeiro da sua empresa.</p>
+                    {companyFilter}
                 </div>
                 <button className="button button-primary" onClick={() => onCreate("lancamentos")}>
                     <Icon name="plus" size={18} /> Nova conta

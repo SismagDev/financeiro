@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { usePagination } from "../hooks/usePagination";
 import { Pagination } from "./Pagination";
 import { SearchInput } from "./SearchInput";
@@ -20,6 +20,8 @@ type Filters = {
 type DateFilters = Pick<Filters, "dataInicial" | "dataFinal" | "formaPagamento"> & { mostrarRecebimentos: boolean; mostrarPagamentos: boolean };
 type Props = {
     resource: Resource;
+    companyFilter?: ReactNode;
+    companyScope?: string;
     company: Company;
     rows: Row[];
     visibleRows: Row[];
@@ -44,6 +46,8 @@ type Props = {
 
 export function ResourcePage({
     resource,
+    companyFilter,
+    companyScope,
     company,
     rows,
     visibleRows,
@@ -65,6 +69,8 @@ export function ResourcePage({
     dateFilters,
     onDateFiltersChange,
 }: Props) {
+    const columns: [string, string][] = ["lancamentos", "baixas", "pessoas", "formas", "bancos"].includes(resource.key)
+        ? [["empresa_identificador", "Empresa"], ...resource.columns] : resource.columns;
     const showSettlement = resource.key === "lancamentos";
     const hasFilters = Boolean((personFilters && (!personFilters.mostrarClientes || !personFilters.mostrarFornecedores)) || search || dateFilters?.dataInicial || dateFilters?.dataFinal || dateFilters?.formaPagamento ||
         (dateFilters && (!dateFilters.mostrarRecebimentos || !dateFilters.mostrarPagamentos)) ||
@@ -97,7 +103,7 @@ export function ResourcePage({
     );
     const paginated = ["baixas", "lancamentos", "pessoas"].includes(resource.key);
     const { page, pageCount, pageRows, onPageChange } = usePagination(sortedRows, JSON.stringify({
-        resource: resource.key, company: company.id, search, lancamentoFilters, dateFilters, personFilters, sort,
+        resource: resource.key, company: companyScope || company.id, search, lancamentoFilters, dateFilters, personFilters, sort,
     }));
     const totals = visibleRows.reduce<{ pagar: number; receber: number }>(
         (acc, row) => ({
@@ -132,6 +138,7 @@ export function ResourcePage({
                 <div>
                     <h1>{resource.title}</h1>
                     <p>Consulte e organize os registros da sua empresa.</p>
+                    {companyFilter}
                 </div>
                 <button className="button button-primary" onClick={onCreate}>
                     <Icon name="plus" size={18} /> {showSettlement || resource.key === "baixas" ? "Nova" : "Novo"} {resource.singular}
@@ -237,7 +244,7 @@ export function ResourcePage({
                     <table className={`data-table resource-table resource-${resource.key}`}>
                         <thead>
                             <tr>
-                                {resource.columns.map(([key, label]) => (
+                                {columns.map(([key, label]) => (
                                     <th key={key} className={columnClass(key)}>
                                         {sortable ? (
                                             <button
@@ -277,7 +284,7 @@ export function ResourcePage({
                                         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onEdit(row); }
                                     }}
                                 >
-                                    {resource.columns.map(([key]) => (
+                                    {columns.map(([key]) => (
                                         <td key={key} className={columnClass(key)}>
                                             {key === "descricao" && showSettlement ? (
                                                 <>

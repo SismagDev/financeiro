@@ -49,7 +49,7 @@ router.delete("/users/:id", async (req: Request, res: Response) => {
         return res.status(204).send();
     } catch { return res.status(409).json({ message: "Não foi possível excluir o usuário porque ele possui vínculos" }); }
 });
-const companySchema = z.object({ nome: z.string().trim().min(2).max(200), cnpj: z.string().regex(/^\d{11}(\d{3})?$/).nullable().optional() }).strict();
+const companySchema = z.object({ identificador: z.string().trim().transform(value => value || null).nullable().optional(), nome: z.string().trim().min(2).max(200), cnpj: z.string().regex(/^\d{11}(\d{3})?$/).nullable().optional() }).strict();
 router.post("/companies", async (req: Request, res: Response) => {
     const parsed = companySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));

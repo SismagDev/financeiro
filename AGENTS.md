@@ -98,3 +98,4 @@ Ao concluir:
 - Informe testes, lint e build executados e seus resultados.
 - Mencione problemas encontrados que não foram corrigidos por estarem fora do escopo.
 - Evite explicações extensas sobre alterações triviais.
+- Sugestão de mensagem de commit

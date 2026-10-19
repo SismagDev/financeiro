@@ -26,7 +26,7 @@ function conflictMessage(conflict: { nome: string }, nome: string) {
 router.get("/", async (req: Request, res: Response) => {
     try {
         const result = await pool.query(
-            `SELECT e.id, e.nome, e.cnpj, e.ativo, ue.perfil, e.licenca_expira_em, CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
+            `SELECT e.id, e.nome, e.cnpj, e.identificador, e.ativo, ue.perfil, e.licenca_expira_em, CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
              JOIN users_empresas ue ON ue.empresa_id = e.id WHERE ue.user_id = $1 AND e.ativo = TRUE ORDER BY e.nome`,
             [req.currentUser?.id],
         );

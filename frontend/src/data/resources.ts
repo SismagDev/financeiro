@@ -38,7 +38,7 @@ export const resources: Resource[] = [
             ["data_vencimento", "Vencimento"],
             ["competencia", "Competência"],
             ["plano_conta_id", "Plano de contas"],
-            ["valor", "Valor total"],
+            ["valor", "Valor líquido"],
             ["saldo", "Saldo para quitação"],
             ["status", "Status"],
         ],

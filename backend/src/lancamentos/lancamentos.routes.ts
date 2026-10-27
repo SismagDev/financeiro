@@ -16,7 +16,8 @@ import {
 import { formatarErroZod } from "../utils/zod";
 import { createSettlement, SettlementError } from "./settlement.service";
 
-import { createLaunches } from "./lancamentos.service";
+import { createLaunches, updateLaunch } from "./lancamentos.service";
+import { adjustmentSchema } from "./launch-values";
 
 const competencia = z.string().date()
     .refine(value => value.endsWith("-01"), "A competência deve ser o primeiro dia do mês")
@@ -35,6 +36,8 @@ const schema = {
         "num_doc",
         "observacoes",
         "valor",
+        "desconto",
+        "acrescimo",
         "tipo",
         "status",
         "data_vencimento",
@@ -52,6 +55,8 @@ const schema = {
         num_doc: numDoc,
         observacoes: z.string().trim().max(5000).nullable().optional(),
         valor,
+        desconto: adjustmentSchema.optional(),
+        acrescimo: adjustmentSchema.optional(),
         tipo,
         status: status.optional(),
         data_vencimento: data,
@@ -65,6 +70,8 @@ const schema = {
         num_doc: numDoc,
         observacoes: z.string().trim().max(5000).nullable().optional(),
         valor: optionalMoney,
+        desconto: adjustmentSchema.optional(),
+        acrescimo: adjustmentSchema.optional(),
         tipo: tipo.optional(),
         data_vencimento: optionalDate,
         competencia: competencia.optional(),
@@ -104,6 +111,7 @@ for (const [path, validator] of [["/", createSchema], ["/parcelado", installment
         try {
             return res.status(201).json(await createLaunches(req.empresaId!, body.data));
         } catch (error) {
+            if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error));
             if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
             return res.status(400).json({ message: "Não foi possível cadastrar o lançamento" });
         }
@@ -138,6 +146,19 @@ router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
         if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
         return res.status(400).json({ message: "Não foi possível dar baixa no lançamento" });
     } finally { client.release(); }
+});
+router.patch("/:id", writeAccess, async (req: Request, res: Response) => {
+    const id = z.string().uuid().safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ message: "ID inválido" });
+    const parsed = schema.patch.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
+    if (!Object.keys(parsed.data).length) return res.status(400).json({ message: "Nenhum campo para atualização" });
+    try { return res.json(await updateLaunch(req.empresaId!, id.data, parsed.data)); }
+    catch (error) {
+        if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error));
+        if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
+        return res.status(400).json({ message: "Não foi possível atualizar o lançamento" });
+    }
 });
 router.use(createResourceRouter(schema, false));
 

@@ -3,6 +3,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { Status } from "../components/Status";
 import type { Row, User } from "../types";
+import { netAmount } from "../utils/accounts";
 
 type Props = {
     user: User;
@@ -298,7 +299,7 @@ export function DashboardPage({
                                         <Status value={row.status} />
                                     </td>
                                     <td className="align-right amount-cell">
-                                        {currency(Number(row.valor || 0))}
+                                        {currency(netAmount(row))}
                                     </td>
                                 </tr>
                             ))}

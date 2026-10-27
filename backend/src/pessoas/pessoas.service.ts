@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { optionalBoolean, text } from "../resources/resource";
 
@@ -25,20 +26,20 @@ const rolesSchema = z.object({ cliente: z.boolean(), fornecedor: z.boolean() })
     });
 
 type PersonInput = z.infer<typeof personPatchSchema>;
-export async function savePerson(empresaId: string, input: PersonInput, id?: string) {
-    const client = await pool.connect();
+export async function savePerson(empresaId: string, input: PersonInput, id?: string, transactionClient?: PoolClient, importId?: string) {
+    const client = transactionClient ?? await pool.connect();
     try {
-        await client.query("BEGIN");
+        if (!transactionClient) await client.query("BEGIN");
         let previous = { cliente: false, fornecedor: false };
         if (id) {
             const existing = await client.query<{ cliente: boolean | null; fornecedor: boolean | null }>(
                 "SELECT cliente, fornecedor FROM pessoas WHERE empresa_id = $1 AND id = $2 FOR UPDATE", [empresaId, id]);
-            if (!existing.rowCount) { await client.query("ROLLBACK"); return null; }
+            if (!existing.rowCount) { if (!transactionClient) await client.query("ROLLBACK"); return null; }
             previous = { cliente: Boolean(existing.rows[0]!.cliente), fornecedor: Boolean(existing.rows[0]!.fornecedor) };
         }
         // Valida o estado final sob bloqueio, sem perder os vínculos omitidos no PATCH.
         const roles = rolesSchema.parse({ cliente: input.cliente ?? previous.cliente, fornecedor: input.fornecedor ?? previous.fornecedor });
-        const entries = Object.entries(id ? input : { ...input, ...roles }).filter(([, value]) => value !== undefined);
+        const entries = Object.entries(id ? input : { ...input, ...roles, ...(importId ? { id: importId } : {}) }).filter(([, value]) => value !== undefined);
         const values: unknown[] = entries.map(([, value]) => value);
         let result;
         if (id) {
@@ -51,8 +52,8 @@ export async function savePerson(empresaId: string, input: PersonInput, id?: str
             result = await client.query<{ id: string }>(
                 "INSERT INTO pessoas (" + [...entries.map(([field]) => field), "empresa_id"].join(", ") + ") VALUES (" + values.map((_, index) => "$" + (index + 1)).join(", ") + ") RETURNING id", values);
         }
-        await client.query("COMMIT");
+        if (!transactionClient) await client.query("COMMIT");
         return { id: result.rows[0]!.id };
-    } catch (error) { await client.query("ROLLBACK"); throw error; }
-    finally { client.release(); }
+    } catch (error) { if (!transactionClient) await client.query("ROLLBACK"); throw error; }
+    finally { if (!transactionClient) client.release(); }
 }

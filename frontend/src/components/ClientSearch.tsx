@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Combobox } from "./Combobox";
 import { RecordFormFields } from "./RecordFormFields";
 import { resources } from "../data/resources";
-import type { Row } from "../types";
+import type { OptionLoader, Row } from "../types";
 
-type Props = { rows: Row[]; selectedRow: Row | null; onCreate?: (values: Row) => Promise<Row> };
-export function ClientSearch({ rows, selectedRow, onCreate }: Props) {
+type Props = { rows: Row[]; selectedRow: Row | null; onCreate?: (values: Row) => Promise<Row>; loadOptions?: OptionLoader };
+export function ClientSearch({ rows, selectedRow, onCreate, loadOptions }: Props) {
     const initial = rows.find(row => row.id === selectedRow?.pessoa_id);
     const [selected, setSelected] = useState(String(selectedRow?.pessoa_id ?? ""));
     const [search, setSearch] = useState(String(initial?.nome ?? ""));
@@ -17,6 +17,7 @@ export function ClientSearch({ rows, selectedRow, onCreate }: Props) {
     return <div className="form-field full-field client-search">
         <label>Cliente
             <Combobox name="pessoa_id" label="Cliente" value={selected} onChange={setSelected}
+                source="pessoas" loadOptions={loadOptions}
                 options={rows.map(row => [String(row.id), String(row.nome)])}
                 placeholder="Buscar por qualquer parte do nome"
                 onCreate={onCreate ? query => { setSearch(query); setCreating(true); } : undefined} />

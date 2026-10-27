@@ -1,5 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { usePagination } from "../hooks/usePagination";
+import type { ReactNode } from "react";
 import { Pagination } from "./Pagination";
 import { SearchInput } from "./SearchInput";
 import { SettlementFilters } from "./SettlementFilters";
@@ -7,7 +6,8 @@ import { Combobox } from "./Combobox";
 import { Icon } from "./Icon";
 import { EmptyState } from "./EmptyState";
 import { Status } from "./Status";
-import type { Company, Resource, Row } from "../types";
+import type { ListMeta, OptionLoader, Resource, Row } from "../types";
+import { netAmount } from "../utils/accounts";
 
 type Filters = {
     formaPagamento: string;
@@ -20,10 +20,12 @@ type Filters = {
 type DateFilters = Pick<Filters, "dataInicial" | "dataFinal" | "formaPagamento"> & { mostrarRecebimentos: boolean; mostrarPagamentos: boolean };
 type Props = {
     resource: Resource;
+    meta: ListMeta;
+    sort: { key: string; direction: "asc" | "desc" };
+    onSort: (key: string) => void;
+    onPageChange: (page: number) => void;
+    loadOptions?: OptionLoader;
     companyFilter?: ReactNode;
-    companyScope?: string;
-    company: Company;
-    rows: Row[];
     visibleRows: Row[];
     loading: boolean;
     search: string;
@@ -46,10 +48,8 @@ type Props = {
 
 export function ResourcePage({
     resource,
+    meta, sort, onSort, onPageChange, loadOptions,
     companyFilter,
-    companyScope,
-    company,
-    rows,
     visibleRows,
     loading,
     search,
@@ -76,50 +76,10 @@ export function ResourcePage({
         (dateFilters && (!dateFilters.mostrarRecebimentos || !dateFilters.mostrarPagamentos)) ||
         (lancamentoFilters && (lancamentoFilters.dataInicial || lancamentoFilters.dataFinal || lancamentoFilters.formaPagamento ||
             lancamentoFilters.tipo !== "todos" || !lancamentoFilters.mostrarPagos || !lancamentoFilters.mostrarEmAberto)));
-    const defaultSort =
-        resource.key === "lancamentos"
-            ? "data_vencimento"
-            : resource.key === "baixas"
-              ? "data_baixa"
-              : resource.key === "movimentacoes"
-              ? "data_movimentacao"
-              : "data_recebimento";
-    const [sort, setSort] = useState({
-        key: defaultSort,
-        direction: resource.key === "lancamentos" ? "asc" : "desc",
-    });
-    const sortedRows = useMemo(
-        () =>
-            [...visibleRows].sort((a, b) => {
-                const left = a[sort.key] ?? "";
-                const right = b[sort.key] ?? "";
-                const comparison =
-                    typeof left === "number" && typeof right === "number"
-                        ? left - right
-                        : String(left).localeCompare(String(right), "pt-BR", { numeric: true });
-                return sort.direction === "asc" ? comparison : -comparison;
-            }),
-        [visibleRows, sort],
-    );
-    const paginated = ["baixas", "lancamentos", "pessoas"].includes(resource.key);
-    const { page, pageCount, pageRows, onPageChange } = usePagination(sortedRows, JSON.stringify({
-        resource: resource.key, company: companyScope || company.id, search, lancamentoFilters, dateFilters, personFilters, sort,
-    }));
-    const totals = visibleRows.reduce<{ pagar: number; receber: number }>(
-        (acc, row) => ({
-            pagar:
-                acc.pagar +
-                (row.tipo === "pagar" && row.status !== "pago" && row.status !== "cancelado"
-                    ? Number(row.saldo || 0)
-                    : 0),
-            receber:
-                acc.receber +
-                (row.tipo === "receber" && row.status !== "pago" && row.status !== "cancelado"
-                    ? Number(row.saldo || 0)
-                    : 0),
-        }),
-        { pagar: 0, receber: 0 },
-    );
+    const paginated = true;
+    const page = meta.pagina;
+    const pageCount = meta.paginas;
+    const totals = { pagar: Number(meta.pagar || 0), receber: Number(meta.receber || 0) };
     const sortable = ["lancamentos", "baixas"].includes(resource.key);
     const columnClass = (key: string) => [
         key === "numero" ? "account-number" : "",
@@ -129,11 +89,7 @@ export function ResourcePage({
         (showSettlement && ["competencia", "plano_conta_id"].includes(key)) ||
         (resource.key === "pessoas" && ["razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "observacoes"].includes(key)) ? "mobile-secondary" : "",
     ].filter(Boolean).join(" ");
-    const changeSort = (key: string) =>
-        setSort((current) => ({
-            key,
-            direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
-        }));
+    const changeSort = onSort;
     return (
         <>
             <div className="page-heading list-heading">
@@ -149,7 +105,7 @@ export function ResourcePage({
             <section className="panel list-panel">
                 <div className={`list-toolbar ${personFilters ? "people-toolbar" : ""}`}>
                     <div className="list-count">
-                        <b>{rows.length}</b> {rows.length === 1 ? "registro" : "registros"}
+                        <b>{meta.total}</b> {meta.total === 1 ? "registro" : "registros"}
                     </div>
                     {!dateFilters && !showSettlement && <label className="search-box">
                         <Icon name="search" size={17} />
@@ -167,11 +123,11 @@ export function ResourcePage({
                         <label className="paid-filter"><input type="checkbox" checked={personFilters.mostrarFornecedores}
                             onChange={event => onPersonFiltersChange({ ...personFilters, mostrarFornecedores: event.target.checked })} /> Mostrar fornecedores</label>
                     </div>}
-                {personFilters && rows.some(row => !row.cliente && !row.fornecedor) && <p className="legacy-people-note" role="status">
-                    Há {rows.filter(row => !row.cliente && !row.fornecedor).length} pessoa(s) antiga(s) sem vínculo. Com os dois filtros marcados, edite esses cadastros para indicar cliente ou fornecedor.
+                {personFilters && Number(meta.sem_vinculo) > 0 && <p className="legacy-people-note" role="status">
+                    Há {meta.sem_vinculo} pessoa(s) antiga(s) sem vínculo. Com os dois filtros marcados, edite esses cadastros para indicar cliente ou fornecedor.
                 </p>}
                 {dateFilters && onDateFiltersChange && <SettlementFilters search={search} onSearch={onSearch}
-                    filters={dateFilters} onChange={filters => onDateFiltersChange({ ...dateFilters, ...filters })} paymentForms={paymentForms}>
+                    filters={dateFilters} onChange={filters => onDateFiltersChange({ ...dateFilters, ...filters })} paymentForms={paymentForms} loadOptions={loadOptions}>
                     <button type="button" className="filter-button clear-settlement-search" onClick={() => onSearch("")}><Icon name="close" size={16} /> Limpar busca</button>
                 </SettlementFilters>}
                 {dateFilters && onDateFiltersChange && <div className="filter-toggles settlement-type-filters">
@@ -187,7 +143,7 @@ export function ResourcePage({
                                 <SearchInput value={search} onChange={onSearch} placeholder="Cliente ou descrição" aria-label="Buscar cliente ou descrição" />
                             </label>
                             <label>Forma de pagamento
-                                <Combobox label="Filtrar por forma de pagamento" placeholder="Todas as formas" emptyLabel="Todas as formas" value={lancamentoFilters.formaPagamento}
+                                <Combobox source="formas" loadOptions={loadOptions} label="Filtrar por forma de pagamento" placeholder="Todas as formas" emptyLabel="Todas as formas" value={lancamentoFilters.formaPagamento}
                                     options={paymentForms.map(item => [String(item.id), String(item.descricao)])}
                                     onChange={formaPagamento => onLancamentoFiltersChange({ ...lancamentoFilters, formaPagamento })} />
                             </label>
@@ -267,7 +223,7 @@ export function ResourcePage({
                             </tr>
                         </thead>
                         <tbody>
-                            {(paginated ? pageRows : sortedRows).map((row, index) => (
+                            {visibleRows.map((row, index) => (
                                 <tr
                                     className={
                                         showSettlement
@@ -278,7 +234,7 @@ export function ResourcePage({
                                               ? row.origem === "recebimentos" ? "income-row" : "expense-row"
                                               : ""
                                     }
-                                    key={String(row.origem || "") + String(row.id || index)}
+                                    key={String(row.empresa_id) + String(row.origem || "") + String(row.id || index)}
                                     tabIndex={0}
                                     aria-label={`Editar ${resource.singular}: ${row.numero || row.nome || row.descricao || "registro"}`}
                                     onClick={() => onEdit(row)}
@@ -301,6 +257,11 @@ export function ResourcePage({
                                                 <div className="balance-cell"><b>{formatValue(key, row[key])}</b>
                                                     <small>{row.data_ultima_baixa ? (row.status === "pago" ? "Quitação: " : "Última baixa: ") + formatValue("data_ultima_baixa", row.data_ultima_baixa) : "Sem pagamento"}</small>
                                                 </div>
+                                            ) : key === "pessoa_id" && row.pessoa_nome ? (<span>{row.pessoa_nome}</span>
+                                            ) : key === "plano_conta_id" && row.plano_conta_descricao ? (<span>{row.plano_conta_descricao}</span>
+                                            ) : key === "banco_id" && row.banco_descricao ? (<span>{row.banco_descricao}</span>
+                                            ) : key === "forma_pagamento_id" && row.forma_pagamento_descricao ? (
+                                                <span>{row.forma_pagamento_descricao}</span>
                                             ) : key === "observacoes" ? (
                                                 <span className="notes-preview" title={String(row.observacoes || "")}>{formatValue(key, row[key])}</span>
                                             ) : resource.key === "pessoas" && (key === "cliente" || key === "fornecedor") ? (
@@ -316,7 +277,7 @@ export function ResourcePage({
                                                 </span>
                                             ) : (
                                                 <span className={key === "valor" ? "amount-cell" + (showSettlement ? " account-total" : "") : ""}>
-                                                    {formatValue(key, row[key])}
+                                                    {formatValue(key, showSettlement && key === "valor" ? netAmount(row) : row[key])}
                                                 </span>
                                             )}
                                         </td>
@@ -375,7 +336,7 @@ export function ResourcePage({
                     )}
                 </div>
                 {paginated && (
-                    <Pagination total={visibleRows.length} page={page} pageCount={pageCount} onPageChange={onPageChange} />
+                    <Pagination total={meta.total} page={page} pageCount={pageCount} onPageChange={onPageChange} />
                 )}
             </section>
             {showSettlement && (

@@ -1,13 +1,14 @@
 import type { FormEvent } from "react";
 import { Combobox } from "./Combobox";
-import type { Row } from "../types";
+import type { OptionLoader, Row } from "../types";
 
 type Props = {
     account: Row; paymentForms: Row[]; remaining: number; busy: boolean;
     formatValue: (key: string, value: Row[string]) => string;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void;
+    loadOptions?: OptionLoader;
 };
-export function SettlementForm({ account, paymentForms, remaining, busy, formatValue, onSubmit, onCancel }: Props) {
+export function SettlementForm({ account, paymentForms, remaining, busy, formatValue, onSubmit, onCancel, loadOptions }: Props) {
     return <form onSubmit={onSubmit} className="record-form">
         <div className={"settle-summary " + (account.tipo === "receber" ? "income-settle" : "expense-settle")}>
             <span>{account.tipo === "receber" ? "Recebimento" : "Pagamento"} · {String(account.descricao)}</span>
@@ -16,6 +17,7 @@ export function SettlementForm({ account, paymentForms, remaining, busy, formatV
         <div className="form-grid">
             <label className="form-field full-field">Forma de pagamento
                 <Combobox name="forma_pagamento_id" label="Forma de pagamento" required
+                    source="formasAtivas" loadOptions={loadOptions}
                     options={paymentForms.filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
             </label>
             <label className="form-field">Valor da baixa

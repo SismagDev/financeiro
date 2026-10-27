@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Pagination } from "../components/Pagination";
-import { usePagination } from "../hooks/usePagination";
-import type { Row } from "../types";
+import type { ListMeta, Row } from "../types";
 
 type CashRow = Row & {
     data: string;
@@ -24,15 +23,17 @@ export function CashPage({
     initial,
     onInitialChange,
     onRefresh,
+    meta, balance, onPageChange,
 }: {
     companyFilter?: ReactNode;
     rows: CashRow[];
     initial: number;
     onInitialChange: (value: number) => void;
     onRefresh: () => void;
+    meta: ListMeta;
+    balance: number;
+    onPageChange: (page: number) => void;
 }) {
-    const { page, pageCount, pageRows, onPageChange } = usePagination(rows, String(initial));
-    const balance = rows.length ? rows[rows.length - 1].saldo_depois : initial;
     return (
         <>
             <div className="page-heading list-heading">
@@ -53,7 +54,7 @@ export function CashPage({
                     <strong>{currency(balance)}</strong>
                     <div className="summary-foot">
                         <span>
-                            {rows.length} lançamento{rows.length === 1 ? "" : "s"} no período
+                            {meta.total} lançamento{meta.total === 1 ? "" : "s"} no período
                         </span>
                     </div>
                 </article>
@@ -92,7 +93,7 @@ export function CashPage({
                             </tr>
                         </thead>
                         <tbody>
-                            {pageRows.map((row) => (
+                            {rows.map((row) => (
                                 <tr
                                     key={String(row.id)}
                                     className={row.tipo === "Entrada" ? "income-row" : "expense-row"}
@@ -123,7 +124,7 @@ export function CashPage({
                         </div>
                     )}
                 </div>
-                <Pagination total={rows.length} page={page} pageCount={pageCount} onPageChange={onPageChange} />
+                <Pagination total={meta.total} page={meta.pagina} pageCount={meta.paginas} onPageChange={onPageChange} />
             </section>
         </>
     );

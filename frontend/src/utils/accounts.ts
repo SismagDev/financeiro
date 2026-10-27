@@ -1,5 +1,10 @@
 import type { Row } from "../types";
 
+export function netAmount(row: Row) {
+    return (Math.round(Number(row.valor || 0) * 100) - Math.round(Number(row.desconto || 0) * 100)
+        + Math.round(Number(row.acrescimo || 0) * 100)) / 100;
+}
+
 export function matchesAccount(account: Row, search: string, people: Row[]) {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     const person = people.find(item => item.id === account.pessoa_id);
@@ -7,11 +12,12 @@ export function matchesAccount(account: Row, search: string, people: Row[]) {
 }
 
 export function remainingAmount(row: Row, data: Record<string, Row[]>) {
+    if (row.saldo !== undefined && row.saldo !== null) return Number(row.saldo);
     const records = row.tipo === "receber" ? data.recebimentos || [] : data.movimentacoes || [];
     const settled = records
         .filter(item => item.lancamento_id === row.id)
         .reduce((sum, item) => sum + Number(item.valor || 0), 0);
-    return Math.max(0, Math.round((Number(row.valor || 0) - settled) * 100) / 100);
+    return Math.max(0, Math.round((netAmount(row) - settled) * 100) / 100);
 }
 
 export function matchesSettlementFilters(row: Row, filters: { formaPagamento: string; dataInicial: string; dataFinal: string }) {

@@ -5,6 +5,7 @@ import { attachCurrentUser, requireRole } from "../middlewares/auth";
 import { requireEmpresa } from "../middlewares/empresa";
 import { formatarErroZod } from "../utils/zod";
 import { createSettlement, deleteSettlement, SettlementError, type SettlementKind, updateSettlement } from "../lancamentos/settlement.service";
+import { listRecords, listShape } from "./list.service";
 
 const uuid = z.string().uuid();
 const amount = z.coerce.number().positive();
@@ -15,6 +16,8 @@ type PatchBody = { forma_pagamento_id?: string; valor?: number; data_movimentaca
 export function createSettlementResourceRouter(table: SettlementKind): Router {
     const router = Router();
     const dateColumn = table === "movimentacoes" ? "data_movimentacao" : "data_recebimento";
+    const columns = `id, empresa_id, lancamento_id, forma_pagamento_id, valor, ${dateColumn}, created_at,
+        (SELECT fp.descricao FROM formas_pagamento fp WHERE fp.empresa_id = ${table}.empresa_id AND fp.id = ${table}.forma_pagamento_id) AS forma_pagamento_descricao`;
     const createSchema = z.object({ lancamento_id: uuid, forma_pagamento_id: uuid, valor: amount, [dateColumn]: z.string().date().optional() }).strict();
     const patchSchema = z.object({ forma_pagamento_id: uuid.optional(), valor: amount.optional(), [dateColumn]: z.string().date().optional() }).strict();
     const filterSchema = z.object({ lancamento_id: uuid.optional(), forma_pagamento_id: uuid.optional(), [dateColumn]: z.string().date().optional() }).strict();
@@ -22,19 +25,19 @@ export function createSettlementResourceRouter(table: SettlementKind): Router {
 
     router.use(attachCurrentUser, requireEmpresa);
     router.get("/", async (req: Request, res: Response) => {
-        const parsed = filterSchema.safeParse(req.query);
+        const parsed = filterSchema.extend(listShape).safeParse(req.query);
         if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
-        const entries = Object.entries(parsed.data);
-        const values: unknown[] = [req.empresaId];
-        const clauses = ["empresa_id = $1"];
-        for (const [key, value] of entries) { values.push(value); clauses.push(`${key} = $${values.length}`); }
-        try { const result = await pool.query(`SELECT id, empresa_id, lancamento_id, forma_pagamento_id, valor, ${dateColumn}, created_at FROM ${table} WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC`, values); return res.json({ data: result.rows }); }
-        catch { return res.status(500).json({ message: "Erro ao listar registros" }); }
+        try {
+            const exact = filterSchema.parse(Object.fromEntries(Object.entries(req.query).filter(([key]) => !(key in listShape))));
+            return res.json(await listRecords({ table, fields: ["lancamento_id", "forma_pagamento_id", "valor", dateColumn] },
+                parsed.data, req.empresaIds ?? [req.empresaId!], exact));
+        }
+        catch (error) { return res.status(error instanceof Error && error.message === "Ordenação inválida" ? 400 : 500).json({ message: "Erro ao listar registros" }); }
     });
     router.get("/:id", async (req: Request, res: Response) => {
         const id = uuid.safeParse(req.params.id);
         if (!id.success) return res.status(400).json({ message: "ID inválido" });
-        try { const result = await pool.query(`SELECT id, empresa_id, lancamento_id, forma_pagamento_id, valor, ${dateColumn}, created_at FROM ${table} WHERE empresa_id = $1 AND id = $2`, [req.empresaId, id.data]); if (!result.rowCount) return res.status(404).json({ message: "Registro não encontrado" }); return res.json({ data: result.rows[0] }); }
+        try { const result = await pool.query(`SELECT ${columns} FROM ${table} WHERE empresa_id = $1 AND id = $2`, [req.empresaId, id.data]); if (!result.rowCount) return res.status(404).json({ message: "Registro não encontrado" }); return res.json({ data: result.rows[0] }); }
         catch { return res.status(500).json({ message: "Erro ao buscar registro" }); }
     });
     router.post("/", writeAccess, async (req: Request, res: Response) => {

@@ -24,7 +24,7 @@ const client = {
         }
         if (sql.includes("FROM lancamentos")) {
             const row = inserts[Number(values[1]) - 1]!;
-            return { rows: [{ valor: row[2], tipo: row[3], status: row[12] }], rowCount: 1 };
+            return { rows: [{ valor: row[2], tipo: row[3], status: row[12], desconto: row[15], acrescimo: row[16] }], rowCount: 1 };
         }
         if (sql.includes("SUM(valor)")) return { rows: [{ total: String(settled[String(values[1])] ?? 0) }], rowCount: 1 };
         if (sql.includes("INSERT INTO recebimentos") || sql.includes("INSERT INTO movimentacoes")) {
@@ -89,5 +89,26 @@ test("plano de outra empresa é recusado antes de inserir", async () => {
     await assert.rejects(() => createLaunches(company, { ...input, plano_conta_id: company }), /referência/);
     assert.equal(inserts.length, 0);
     assert.ok(statements.includes("ROLLBACK"));
+});
+
+test("baixa imediata usa o líquido e os ajustes são distribuídos em centavos no parcelamento", async () => {
+    await createLaunches(company, { ...input, desconto: 10, acrescimo: 5, forma_pagamento_id: company });
+    assert.equal(settled["1"], 95);
+    assert.equal(inserts[0]![2], "100.00");
+    assert.equal(inserts[0]![15], "10.00");
+    inserts = []; settled = {};
+    await createLaunches(company, { ...input, parcelas: 3, desconto: 1, acrescimo: 0.5, forma_pagamento_id: company });
+    assert.deepEqual(inserts.map(row => row[15]), ["0.34", "0.33", "0.33"]);
+    assert.deepEqual(inserts.map(row => row[16]), ["0.17", "0.17", "0.16"]);
+    assert.equal(Math.round(Object.values(settled).reduce((sum, value) => sum + value, 0) * 100), 9950);
+});
+
+test("desconto inválido reverte a criação e desconto integral gera conta quitada sem baixa de zero", async () => {
+    await assert.rejects(() => createLaunches(company, { ...input, desconto: 101 }), /desconto/);
+    assert.ok(statements.includes("ROLLBACK"));
+    assert.equal(inserts.length, 0);
+    await createLaunches(company, { ...input, desconto: 100, forma_pagamento_id: company });
+    assert.equal(inserts[0]![12], "pago");
+    assert.deepEqual(settled, {});
 });
 

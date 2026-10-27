@@ -3,12 +3,12 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
 import { CompanySelect } from "./components/CompanySelect";
-import { companyRows, loadCompanyResources, toggleCompany } from "./utils/companies";
+import { companyRows, toggleCompany } from "./utils/companies";
 import { Combobox } from "./components/Combobox";
-import { matchesAccount, matchesSettlementFilters, remainingAmount } from "./utils/accounts";
+import { remainingAmount } from "./utils/accounts";
 import { Icon } from "./components/Icon";
 import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
-import type { Company, Row, User } from "./types";
+import type { Company, ListMeta, OptionLoader, Row, User } from "./types";
 import "./App.css";
 import { competenceDate, competenceLabel } from "./utils/dates";
 
@@ -209,6 +209,7 @@ function AuthScreen({ onLogin }: { onLogin: (user: User) => void }) {
 function App() {
     const [user, setUser] = useState<User | null>(null);
     const [authChecked, setAuthChecked] = useState(false);
+    const authRequested = useRef(false);
     const [companies, setCompanies] = useState<Company[]>([]);
     const [company, setCompany] = useState<Company | null>(null);
     const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
@@ -226,27 +227,33 @@ function App() {
     const [lookups, setLookups] = useState<Record<string, Row[]>>({});
     const dashboardData = useMemo(() => companyRows(lookups, selectedCompanyIds, companyFilter), [lookups, selectedCompanyIds, companyFilter]);
 
+    const [listResult, setListResult] = useState<{ key: string; data: Row[]; meta: ListMeta; balance: number } | null>(null);
+    const [summary, setSummary] = useState<{ scope: string; rows: Row[]; flowRows: Row[]; overdueRows: Row[]; pagar: number; receber: number; totalPaid: number; overdue: number } | null>(null);
+    const [alerts, setAlerts] = useState<{ scope: string; overdue: number; overdueRows: Row[] } | null>(null);
+    const alertVersion = useRef(0);
+    const requestController = useRef<AbortController | null>(null);
+    const [pagination, setPagination] = useState({ key: "", page: 1 });
+    const [sorting, setSorting] = useState<{ page: string; key: string; direction: "asc" | "desc" }>({ page: "", key: "", direction: "asc" });
+    const [detailsRevision, setDetailsRevision] = useState(0);
     const [cashInitial, setCashInitial] = useState(0);
-    const cashRows = useMemo(() => {
-        const rows: Row[] = [];
-        let balance = cashInitial;
-        for (const row of [...(dashboardData.cash || [])].sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.id).localeCompare(String(b.id)))) {
-            const before = balance;
-            balance = Math.round((balance + Number(row.valor)) * 100) / 100;
-            rows.push({ ...row, saldo_antes: before, saldo_depois: balance });
-        }
-        return rows;
-    }, [dashboardData.cash, cashInitial]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     function setModal(next: typeof modal) {
-        if (next === "create") { formVersion.current++; setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); }
+        formVersion.current++;
+        if (next === "create") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); }
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
-    const formLookups = useMemo(() => companyRows(lookups, selectedCompanyIds, formCompanyId), [lookups, selectedCompanyIds, formCompanyId]);
+    const formLookups = useMemo(() => {
+        const data = companyRows(lookups, selectedCompanyIds, formCompanyId);
+        if (selectedRow) for (const [key, idField, labelField] of [["pessoas", "pessoa_id", "pessoa_nome"], ["planos", "plano_conta_id", "plano_conta_descricao"], ["bancos", "banco_id", "banco_descricao"], ["formas", "forma_pagamento_id", "forma_pagamento_descricao"], ["lancamentos", "lancamento_id", "descricao"]]) {
+            if (selectedRow[idField] && selectedRow[labelField] && !(data[key] || []).some(row => row.id === selectedRow[idField]))
+                data[key] = [...(data[key] || []), { id: selectedRow[idField], nome: selectedRow[labelField], descricao: selectedRow[labelField], empresa_id: formCompanyId }];
+        }
+        return data;
+    }, [lookups, selectedCompanyIds, formCompanyId, selectedRow]);
     const [search, setSearch] = useState("");
     const [settlementFilters, setSettlementFilters] = useState({
         dataInicial: "", dataFinal: "", formaPagamento: "", mostrarRecebimentos: true, mostrarPagamentos: true,
@@ -294,9 +301,10 @@ function App() {
     const { ask, messageBox } = useMessageBox();
 
     const warningDay = warningDateFormatter.format(new Date());
-    const overdueRows = useMemo(() => (dashboardData.lancamentos || []).filter(item =>
-        item.status === "pendente" && String(item.data_vencimento || "").slice(0, 10) < warningDay), [dashboardData.lancamentos, warningDay]);
-    const overdue = overdueRows.length;
+    const scopeIds = useMemo(() => selectedCompanies.filter(item => item.licenca_status !== "vencida" && (!companyFilter || item.id === companyFilter)).map(item => item.id), [selectedCompanies, companyFilter]);
+    const scopeKey = scopeIds.join(",");
+    const overdueRows = alerts?.scope === scopeKey ? alerts.overdueRows : EMPTY_ROWS;
+    const overdue = alerts?.scope === scopeKey ? Number(alerts.overdue) : 0;
     useEffect(() => {
         if (!user || !company || loadedCompanyId !== company.id || !overdue || modal || company.licenca_status === "vencida") return;
         const key = "fluxo-overdue-warning:" + user.id + ":" + company.id;
@@ -361,6 +369,8 @@ function App() {
     }, []);
 
     useEffect(() => {
+        if (authRequested.current) return;
+        authRequested.current = true;
         api("/auth/me")
             .then((result) => {                setUser(result.data);
                 setAuthChecked(true);
@@ -374,74 +384,110 @@ function App() {
             });
     }, [loadCompanies]);
 
+    const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
+    const dateFilters = page === "baixas" ? settlementFilters : undefined;
+    const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "data_vencimento" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
+    const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, sort.key, sort.direction]);
+    const requestedPage = pagination.key === filterKey ? pagination.page : 1;
+    const pageQuery = useMemo(() => {
+        const params = new URLSearchParams({ empresas: scopeKey, pagina: String(requestedPage), tamanho: "50", ordem: sort.key, direcao: sort.direction });
+        if (page !== "caixa" && search.trim()) params.set("busca", search.trim());
+        if (page === "lancamentos") {
+            params.set("mostrar_em_aberto", String(lancamentoFilters.mostrarEmAberto));
+            params.set("mostrar_pagos", String(lancamentoFilters.mostrarPagos));
+            if (lancamentoFilters.tipo !== "todos") params.set("tipo", lancamentoFilters.tipo);
+            if (lancamentoFilters.formaPagamento) params.set("forma_pagamento_id", lancamentoFilters.formaPagamento);
+            if (lancamentoFilters.dataInicial) params.set("data_inicial", lancamentoFilters.dataInicial);
+            if (lancamentoFilters.dataFinal) params.set("data_final", lancamentoFilters.dataFinal);
+        }
+        if (page === "baixas") {
+            params.set("unificadas", "true");
+            params.set("mostrar_recebimentos", String(settlementFilters.mostrarRecebimentos));
+            params.set("mostrar_pagamentos", String(settlementFilters.mostrarPagamentos));
+            if (settlementFilters.formaPagamento) params.set("forma_pagamento_id", settlementFilters.formaPagamento);
+            if (!(settlementFilters.dataInicial && settlementFilters.dataFinal && settlementFilters.dataInicial > settlementFilters.dataFinal)) {
+                if (settlementFilters.dataInicial) params.set("data_inicial", settlementFilters.dataInicial);
+                if (settlementFilters.dataFinal) params.set("data_final", settlementFilters.dataFinal);
+            }
+        }
+        if (page === "pessoas") {
+            params.set("mostrar_clientes", String(personFilters.mostrarClientes));
+            params.set("mostrar_fornecedores", String(personFilters.mostrarFornecedores));
+        }
+        const endpoint = page === "dashboard" ? "/lancamentos" : page === "caixa" ? "/caixa" : page === "baixas" ? "/movimentacoes" : resource?.endpoint;
+        return page === "dashboard" ? "/lancamentos?resumo=dashboard&empresas=" + scopeKey : endpoint ? endpoint + "?" + params : "";
+    }, [page, scopeKey, requestedPage, sort.key, sort.direction, search, lancamentoFilters, settlementFilters, personFilters, resource?.endpoint]);
     const fetchResources = useCallback(async () => {
         const version = ++loadVersion.current;
-        if (!selectedCompanies.length) return;
+        requestController.current?.abort();
+        const controller = new AbortController();
+        requestController.current = controller;
+        if (!scopeKey || !pageQuery) { setListResult(null); setLoadError(""); setLoading(false); return; }
         setLoading(true); setLoadError("");
         try {
-            const data = await loadCompanyResources(selectedCompanies.filter(item => item.licenca_status !== "vencida"),
-                [...resources, { key: "cash", endpoint: "/caixa?saldo_inicial=0" }], api);
+            const result = await api(pageQuery, { signal: controller.signal }, scopeKey.split(",")[0]);
             if (version !== loadVersion.current) return;
-            setLookups(data);
-            setLoadedCompanyId(selectedCompanies[0].id);
+            if (page === "dashboard") { setSummary({ scope: scopeKey, ...result.data }); setAlerts({ scope: scopeKey, overdue: Number(result.data.overdue), overdueRows: result.data.overdueRows }); }
+            else setListResult({ key: filterKey, data: result.data, meta: result.meta, balance: Number(result.saldo_atual || 0) });
+            setLoadedCompanyId(scopeKey.split(",")[0]);
         } catch (error) {
-            if (version !== loadVersion.current) return;
-            setLookups({});
+            if (version !== loadVersion.current || controller.signal.aborted) return;
+            setListResult(null);
             setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os dados.");
         } finally { if (version === loadVersion.current) setLoading(false); }
-    }, [selectedCompanies]);
+    }, [pageQuery, scopeKey, filterKey, page]);
     useEffect(() => {
         const version = loadVersion;
-        const frame = window.requestAnimationFrame(() => { void fetchResources(); });
-        return () => { window.cancelAnimationFrame(frame); version.current++; };
-    }, [fetchResources, page]);
+        const timer = window.setTimeout(() => { void fetchResources(); }, 200);
+        return () => { window.clearTimeout(timer); version.current++; requestController.current?.abort(); };
+    }, [fetchResources]);
+    const fetchAlerts = useCallback(async () => {
+        const version = ++alertVersion.current;
+        if (!scopeKey) return;
+        try {
+            const result = await api("/lancamentos?resumo=alertas&empresas=" + scopeKey, {}, scopeKey.split(",")[0]);
+            if (version === alertVersion.current) { setAlerts({ scope: scopeKey, ...result.data }); setLoadedCompanyId(scopeKey.split(",")[0]); }
+        } catch { if (version === alertVersion.current) setAlerts(null); }
+    }, [scopeKey]);
+    useEffect(() => {
+        if (page === "dashboard" || alerts?.scope === scopeKey) return;
+        const version = alertVersion;
+        const timer = window.setTimeout(() => { void fetchAlerts(); }, 200);
+        return () => { window.clearTimeout(timer); version.current++; };
+    }, [page, scopeKey, alerts?.scope, fetchAlerts]);
+    const currentRows = listResult?.key === filterKey ? listResult.data : EMPTY_ROWS;
+    const filteredRows = currentRows;
+    const listMeta = listResult?.key === filterKey ? listResult.meta : { total: 0, pagina: 1, paginas: 1 };
+    const cashRows = useMemo(() => currentRows.map(row => ({ ...row, saldo_antes: cashInitial + Number(row.saldo_antes), saldo_depois: cashInitial + Number(row.saldo_depois) })), [currentRows, cashInitial]);
 
-    const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
-    const currentRows = useMemo<Row[]>(() => {
-        if (page === "baixas") return ["recebimentos", "movimentacoes"].flatMap(origin =>
-            (dashboardData[origin] || []).map(row => {
-                const account = (dashboardData.lancamentos || []).find(item => item.id === row.lancamento_id);
-                return { ...row, origem: origin, pessoa_id: account?.pessoa_id, descricao: account?.descricao,
-                    natureza: origin === "recebimentos" ? "Recebimento" : "Pagamento",
-                    data_baixa: row.data_recebimento || row.data_movimentacao };
-            }));
-        if (page === "lancamentos") return (dashboardData.lancamentos || []).map(row => {
-            const records = (dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [])
-                .filter(item => item.lancamento_id === row.id);
-            const dates = records.map(item => String(item.data_recebimento || item.data_movimentacao || "")).filter(Boolean).sort();
-            return { ...row, saldo: remainingAmount(row, dashboardData), data_ultima_baixa: dates.at(-1) };
-        });
-        return dashboardData[page] || EMPTY_ROWS;
-    }, [dashboardData, page]);
-    const dateFilters = page === "baixas" ? settlementFilters : undefined;
-    const filteredRows = useMemo(() => currentRows.filter(row => {
-        if (page === "lancamentos" || page === "baixas") {
-            if (!matchesAccount(row, search, lookups.pessoas || [])) return false;
-        } else if (page === "pessoas") {
-            const term = search.trim().toLocaleLowerCase("pt-BR");
-            const digits = term.replace(/\D/g, "");
-            const matches = !term || String(row.nome || "").toLocaleLowerCase("pt-BR").includes(term) ||
-                [row.documento, row.responsavel_cpf, row.celular].some(value => String(value || "").toLowerCase().includes(term) ||
-                    (digits.length > 0 && /^[\d\s().+/-]+$/.test(term) && String(value || "").replace(/\D/g, "").includes(digits)));
-            // Registros legados sem vínculo continuam acessíveis para correção quando ambos estão marcados.
-            return matches && ((personFilters.mostrarClientes && Boolean(row.cliente)) ||
-                (personFilters.mostrarFornecedores && Boolean(row.fornecedor)) ||
-                (personFilters.mostrarClientes && personFilters.mostrarFornecedores && !row.cliente && !row.fornecedor));
-        } else if (!JSON.stringify(row).toLowerCase().includes(search.toLowerCase())) return false;
-        if (dateFilters) {
-            if (!(row.origem === "recebimentos" ? dateFilters.mostrarRecebimentos : dateFilters.mostrarPagamentos)) return false;
-            return matchesSettlementFilters(row, dateFilters);
+    const fetchOptions = useCallback(async (source: string, query: string, nextPage: number, ids: string[], version: number) => {
+        const key = source === "formasAtivas" ? "formas" : source === "descricoes" ? "lancamentos" : source;
+        const endpoint = resources.find(item => item.key === key)?.endpoint;
+        if (!endpoint || !ids.length) return { options: [], hasMore: false };
+        const params = new URLSearchParams({ pagina: String(nextPage), tamanho: "50", empresas: ids.join(","), busca: query, opcoes: source === "descricoes" ? "descricoes" : "true" });
+        if (source === "formasAtivas") params.set("ativo", "true");
+        const result = await api(endpoint + "?" + params, {}, ids[0]);
+        if (version !== formVersion.current) throw new Error("A empresa ou o formulário foi alterado.");
+        setLookups(previous => ({ ...previous, [key]: Array.from(new Map([...(previous[key] || []), ...result.data].map(row => [String(row.empresa_id) + ":" + row.id, row])).values()) }));
+        const options: [string, string][] = result.data.map((row: Row) => [String(source === "descricoes" ? String(row.descricao).trim() : row.id),
+            source === "lancamentos" ? [row.pessoa_nome, row.descricao, row.tipo === "receber" ? "Recebimento" : "Pagamento"].filter(Boolean).join(" · ") : String(row.nome || row.descricao || row.id)]);
+        return { options, hasMore: result.meta.pagina < result.meta.paginas };
+    }, []);
+    const loadFormOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, formCompanyId ? [formCompanyId] : [], formVersion.current), [fetchOptions, formCompanyId]);
+    const loadFilterOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, scopeKey ? scopeKey.split(",") : [], formVersion.current), [fetchOptions, scopeKey]);
+    const detailAccountId = selectedRow?.id, detailCompanyId = selectedRow?.empresa_id, detailType = selectedRow?.tipo;
+    const loadAccountSettlements = useCallback(async (filters: { dataInicial: string; dataFinal: string; formaPagamento: string }, nextPage: number) => {
+        if (!detailAccountId) return { data: EMPTY_ROWS, meta: { total: 0, pagina: 1, paginas: 1 } };
+        const params = new URLSearchParams({ lancamento_id: String(detailAccountId), pagina: String(nextPage), tamanho: "50", ordem: "data_baixa", direcao: "desc" });
+        if (filters.formaPagamento) params.set("forma_pagamento_id", filters.formaPagamento);
+        if (!(filters.dataInicial && filters.dataFinal && filters.dataInicial > filters.dataFinal)) {
+            if (filters.dataInicial) params.set("data_inicial", filters.dataInicial);
+            if (filters.dataFinal) params.set("data_final", filters.dataFinal);
         }
-        if (page !== "lancamentos") return true;
-        const due = String(row.data_vencimento || "").slice(0, 10);
-        const records = dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || [];
-        return (lancamentoFilters.tipo === "todos" || row.tipo === lancamentoFilters.tipo) &&
-            (row.status === "pago" ? lancamentoFilters.mostrarPagos :
-                (row.status === "pendente" || row.status === "parcial") && lancamentoFilters.mostrarEmAberto) &&
-            (!lancamentoFilters.formaPagamento || records.some(item => item.lancamento_id === row.id && item.forma_pagamento_id === lancamentoFilters.formaPagamento)) &&
-            (!lancamentoFilters.dataInicial || due >= lancamentoFilters.dataInicial) &&
-            (!lancamentoFilters.dataFinal || due <= lancamentoFilters.dataFinal);
-    }), [currentRows, search, page, lookups.pessoas, dashboardData, lancamentoFilters, dateFilters, personFilters]);
+        const key = detailType === "receber" ? "recebimentos" : "movimentacoes";
+        const result = await api("/" + key + "?" + params, {}, String(detailCompanyId));
+        return result as { data: Row[]; meta: ListMeta };
+    }, [detailAccountId, detailCompanyId, detailType]);
     const notify = (message: string, type: Toast["type"] = "success") => {
         setToast({ message, type });
         window.setTimeout(() => setToast(null), 3200);
@@ -466,6 +512,8 @@ function App() {
             await api("/auth/logout", { method: "POST" });
         } finally {
             setUser(null);
+            formVersion.current++; alertVersion.current++;
+            setSummary(null); setAlerts(null); setListResult(null);
             activeCompanyId.current = null;
             setLoadedCompanyId(null); setNotificationsOpen(false);
             setLookups({});
@@ -503,6 +551,10 @@ function App() {
         const form = new FormData(event.currentTarget);
         const darBaixa = modal !== "edit" && resource.key === "lancamentos" && Boolean(form.get("forma_pagamento_id"));
         const payload: Row = {};
+        if (resource.key === "lancamentos") {
+            payload.desconto = Number(form.get("desconto") || 0);
+            payload.acrescimo = Number(form.get("acrescimo") || 0);
+        }
         for (const field of resource.fields) {
             const value = form.get(field.name);
             if (field.type === "checkbox") payload[field.name] = value === "on";
@@ -619,7 +671,14 @@ function App() {
         } finally { setBusy(false); }
     }
 
-    async function reloadCurrent() { await fetchResources(); }
+    async function reloadCurrent() {
+        setDetailsRevision(value => value + 1);
+        const version = formVersion.current;
+        await Promise.all([fetchResources(), ["lancamentos", "baixas", "caixa"].includes(page) ? fetchAlerts() : Promise.resolve(),
+            selectedRow && page === "lancamentos" && (modal === "details" || modal === "edit" || settlementOverlay)
+                ? api("/lancamentos/" + selectedRow.id, {}, String(selectedRow.empresa_id)).then(result => { if (version === formVersion.current) setSelectedRow(result.data); })
+                : Promise.resolve()]);
+    }
 
     async function createPerson(values: Row): Promise<Row> {
         if (!company) throw new Error("Selecione uma empresa.");
@@ -687,7 +746,7 @@ function App() {
             </main>
         );
     const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 1} value={companyFilter} onChange={changeCompanyFilter} />;
-    const currentAccount = selectedRow && (dashboardData.lancamentos || []).find(row => row.id === selectedRow.id) || selectedRow;
+    const currentAccount = selectedRow && currentRows.find(row => row.id === selectedRow.id && row.empresa_id === selectedRow.empresa_id) || selectedRow;
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
         { key: "lancamentos", title: "Contas", icon: "arrows", section: "FINANCEIRO" },
@@ -699,29 +758,11 @@ function App() {
         { key: "baixas", title: "Baixas", icon: "arrows", section: "FINANCEIRO" },
     ];
     const grouped = ["WORKSPACE", "FINANCEIRO", "CADASTROS"];
-    const visibleRows = dashboardData.lancamentos || [];
-    const cashIn = visibleRows
-        .filter((item) => item.tipo === "receber" && item.status !== "cancelado" && item.status !== "pago")
-        .reduce((sum, item) => sum + remainingAmount(item, dashboardData), 0);
-    const cashOut = visibleRows
-        .filter((item) => item.tipo === "pagar" && item.status !== "cancelado" && item.status !== "pago")
-        .reduce((sum, item) => sum + remainingAmount(item, dashboardData), 0);
-    const flowRows = [
-        ...(dashboardData.recebimentos || []).map((item) => ({
-            ...item,
-            tipo: "receber",
-            data_fluxo: item.data_recebimento,
-        })),
-        ...(dashboardData.movimentacoes || []).map((item) => ({
-            ...item,
-            tipo: "pagar",
-            data_fluxo: item.data_movimentacao,
-        })),
-    ];
-    const totalPaid = [...(dashboardData.recebimentos || []), ...(dashboardData.movimentacoes || [])].reduce(
-        (sum, item) => sum + Number(item.valor || 0),
-        0,
-    );
+    const visibleRows = summary?.scope === scopeKey ? summary.rows : EMPTY_ROWS;
+    const cashIn = summary?.scope === scopeKey ? Number(summary.receber) : 0;
+    const cashOut = summary?.scope === scopeKey ? Number(summary.pagar) : 0;
+    const flowRows = summary?.scope === scopeKey ? summary.flowRows : EMPTY_ROWS;
+    const totalPaid = summary?.scope === scopeKey ? Number(summary.totalPaid) : 0;
 
     function displayValue(key: string, value: Row[string]) {
         if (key === "competencia") return competenceLabel(value) || "—";
@@ -737,7 +778,7 @@ function App() {
                       : key === "lancamento_id"
                         ? "lancamentos"
                         : "formas";
-            const record = (lookups[source] || []).find((item) => item.id === value);
+            const record = [...(formLookups[source] || []), ...(lookups[source] || [])].find((item) => item.id === value);
             return record ? String(record.nome || record.descricao || "—") : String(value).slice(0, 8);
         }
         if (key === "valor" || key === "saldo") return currency(Number(value));
@@ -947,7 +988,7 @@ function App() {
                                                             </small>
                                                         </span>
                                                         <span className="notification-value">
-                                                            {currency(Number(item.valor || 0))}
+                                                            {currency(remainingAmount(item, dashboardData))}
                                                         </span>
                                                     </button>
                                                 ))}
@@ -999,6 +1040,9 @@ function App() {
                                 companyFilter={companyFilterControl}
                                 rows={cashRows as never}
                                 initial={cashInitial}
+                                meta={listMeta}
+                                balance={cashInitial + (listResult?.key === filterKey ? listResult.balance : 0)}
+                                onPageChange={next => setPagination({ key: filterKey, page: next })}
                                 onInitialChange={setCashInitial}
                                 onRefresh={reloadCurrent}
                             />
@@ -1006,12 +1050,14 @@ function App() {
                             <ResourcePage
                                 key={company.id + resource.key}
                                 resource={resource}
+                                meta={listMeta}
+                                sort={sort}
+                                onSort={key => setSorting({ page, key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
+                                onPageChange={next => setPagination({ key: filterKey, page: next })}
+                                loadOptions={loadFilterOptions}
                                 companyFilter={companyFilterControl}
-                                companyScope={selectedCompanyIds.join(",") + ":" + companyFilter}
-                                company={company}
-                                rows={currentRows}
                                 visibleRows={filteredRows}
-                                loading={loading}
+                                loading={Boolean(scopeKey) && (loading || (!loadError && listResult?.key !== filterKey))}
                                 search={search}
                                 formatValue={displayValue}
                                 onSearch={setSearch}
@@ -1034,7 +1080,7 @@ function App() {
                                     page === "lancamentos" ? setLancamentoFilters : undefined
                                 }
                                 onShowSettlements={(row) => { setSelectedRow(row); setModal("details"); }}
-                                hasSettlements={(row) => (dashboardData[row.tipo === "receber" ? "recebimentos" : "movimentacoes"] || []).some(item => item.lancamento_id === row.id)}
+                                hasSettlements={row => Number(row.quantidade_baixas || 0) > 0}
                                 onSettle={(row) => {
                                     setSelectedRow(row);
                                     setModal("settle");
@@ -1093,7 +1139,7 @@ function App() {
                             {modal === "details" && currentAccount ? (
                                 <div className="record-form">
                                     <p><b>{currentAccount.pessoa_id && <>{displayValue("pessoa_id", currentAccount.pessoa_id)} · </>}{String(currentAccount.descricao)}</b></p>
-                                    <AccountSettlements account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                    <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />
                                 </div>
                             ) : modal === "company-edit" ? (
@@ -1125,7 +1171,7 @@ function App() {
                                     </div>
                                 </form>
                             ) : modal === "settle" && currentAccount ? (
-                                <SettlementForm account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                                <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                                     busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => { setModal(null); setSelectedRow(null); }} />
                             ) : (
                                 <>
@@ -1137,6 +1183,7 @@ function App() {
                                             key={String(selectedRow?.id || resource.key) + modal}
                                             fields={resource.fields}
                                             onCreatePerson={createPerson}
+                                            loadOptions={loadFormOptions}
                                             selectedRow={selectedRow}
                                             lookups={formLookups}
                                             companyId={formCompanyId}
@@ -1149,7 +1196,7 @@ function App() {
                                                 Forma para baixa imediata{" "}
                                                 <span className="optional-label">Opcional</span>
                                             </span>
-                                            <Combobox key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
+                                            <Combobox source="formasAtivas" loadOptions={loadFormOptions} key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
                                         </label>
                                     )}
                                     <div className="modal-actions">
@@ -1175,7 +1222,7 @@ function App() {
                                     </div>
                                 </form>
                                 {modal === "edit" && resource?.key === "lancamentos" && currentAccount &&
-                                    <AccountSettlements account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                    <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />}
                                 </>
                             )}
@@ -1190,7 +1237,7 @@ function App() {
                         <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
                             <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
                         </div>
-                        <SettlementForm account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                        <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                             busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
                     </section>
                 </div>}

@@ -4,6 +4,8 @@ import { pool } from "../db";
 import { attachCurrentUser, requireRole } from "../middlewares/auth";
 import { requireEmpresa } from "../middlewares/empresa";
 import { formatarErroZod } from "../utils/zod";
+import { isHistoricalRecord } from "../utils/access-import";
+import { alertsSummary, dashboardSummary, listRecords, listShape } from "./list.service";
 
 type ResourceConfig = {
     table: string;
@@ -23,11 +25,17 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
     const router = Router();
     if (secured) router.use(attachCurrentUser, requireEmpresa);
     const writeAccess = requireRole("admin", "contador", "comum");
+    router.use("/:id", (req, res, next) => {
+        if (isHistoricalRecord(req.empresaId!, config.table, req.params.id))
+            return res.status(req.method === "GET" ? 404 : 409).json({ message: "Cadastro reservado à importação" });
+        next();
+    });
 
     async function relationsBelongToCompany(values: Record<string, unknown>, empresaId?: string) {
         for (const [field, table] of Object.entries(config.relations || {})) {
             const value = values[field];
             if (value === undefined || value === null) continue;
+            if (empresaId && isHistoricalRecord(empresaId, table, value)) return false;
             const result = await pool.query(
                 `SELECT 1 FROM ${table} WHERE empresa_id = $1 AND id = $2 LIMIT 1`,
                 [empresaId, value],
@@ -38,25 +46,19 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
     }
 
     router.get("/", async (req: Request, res: Response) => {
-        const parsed = config.filter.safeParse(req.query);
+        const parsed = config.filter.extend(listShape).safeParse(req.query);
         if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
 
-        const entries = Object.entries(parsed.data);
-        const values: unknown[] = [req.empresaId];
-        const clauses = ["empresa_id = $1"];
-        for (const [key, value] of entries) {
-            const partial = config.searchFields?.includes(key) ?? false;
-            values.push(partial ? `%${value}%` : value);
-            clauses.push(`${key} ${partial ? "ILIKE" : "="} $${values.length}`);
-        }
-
         try {
-            const result = await pool.query(
-                `SELECT ${columns(config)} FROM ${config.table} WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC`,
-                values,
-            );
-            return res.status(200).json({ data: result.rows });
+            const ids = req.empresaIds ?? [req.empresaId!];
+            if (config.table === "lancamentos" && parsed.data.resumo) {
+                const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+                return res.json(await (parsed.data.resumo === "alertas" ? alertsSummary(ids, day) : dashboardSummary(ids, day)));
+            }
+            const exact = config.filter.parse(Object.fromEntries(Object.entries(req.query).filter(([key]) => !(key in listShape))));
+            return res.status(200).json(await listRecords(config, parsed.data, ids, exact));
         } catch (e) {
+            if (e instanceof Error && e.message === "Ordenação inválida") return res.status(400).json({ message: e.message });
             console.log(e);
             return res.status(500).json({ message: "Erro ao listar registros" });
         }
@@ -66,6 +68,11 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
         if (!z.string().uuid().safeParse(req.params.id).success)
             return res.status(400).json({ message: "ID inválido" });
         try {
+            if (config.table === "lancamentos") {
+                const result = await listRecords(config, { pagina: 1, tamanho: 1 }, [req.empresaId!], { id: req.params.id });
+                if (!result.data[0]) return res.status(404).json({ message: "Registro não encontrado" });
+                return res.json({ data: result.data[0] });
+            }
             const result = await pool.query(
                 `SELECT ${columns(config)} FROM ${config.table} WHERE empresa_id = $1 AND id = $2`,
                 [req.empresaId, req.params.id],

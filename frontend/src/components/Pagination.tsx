@@ -1,4 +1,4 @@
-import { PAGE_SIZE } from "../hooks/usePagination";
+const PAGE_SIZE = 50;
 
 type Props = {
     total: number;

@@ -2991,3 +2991,12 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 @media (max-width: 400px) {
     .page-baixas .settlement-filter-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+.account-value-editor { display: grid; gap: 10px; min-width: 0; }
+.value-adjustments summary { cursor: pointer; font-size: 13px; color: var(--text-muted, #64748b); padding: 6px 0; }
+.adjustment-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.net-preview { margin: 0; font-size: 14px; }
+.account-value-summary { display: grid; gap: 8px; margin: 0 0 20px; }
+.account-value-summary > div { display: flex; justify-content: space-between; gap: 16px; }
+.account-value-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
+.account-value-summary .net-value { border-top: 1px solid #e2e8f0; padding-top: 10px; font-weight: 700; }

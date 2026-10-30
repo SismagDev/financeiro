@@ -39,8 +39,9 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
             if (!input[field]) continue;
             if (isHistoricalRecord(empresaId, table, input[field]) && !(transactionClient && importId))
                 throw new SettlementError("Cadastro reservado à importação");
-            const result = await client.query(`SELECT 1 FROM ${table} WHERE empresa_id = $1 AND id = $2`, [empresaId, input[field]]);
-            if (!result.rowCount) throw new SettlementError("Uma referência não existe ou pertence a outra empresa");
+            const result = await client.query(`SELECT 1 FROM ${table} WHERE empresa_id = $1 AND id = $2${field === "plano_conta_id" ? " AND tipo IN ('ambos', $3)" : ""}`,
+                field === "plano_conta_id" ? [empresaId, input[field], input.tipo] : [empresaId, input[field]]);
+            if (!result.rowCount) throw new SettlementError("Uma referência não existe ou pertence a outra empresa" + (field === "plano_conta_id" ? ", ou o plano é incompatível com o tipo da conta" : ""));
         }
         const totalCentavos = Math.round(input.valor * (input.modo_valor === "parcela" ? parcelas : 1) * 100);
         const base = Math.floor(totalCentavos / parcelas);

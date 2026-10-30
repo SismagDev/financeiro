@@ -1,4 +1,25 @@
 import type { Row } from "../types";
+import { competenceDate, competenceLabel } from "./dates";
+
+// Prévia das regras de createLaunches: vencimentos em dias, competência mensal e rateio em centavos.
+export function installmentPreview(account: Row, count: number, mode: string, due: string, competence: string, intervals?: number[]) {
+    const baseCompetence = competenceDate(competence);
+    if (!due || !baseCompetence || !Number.isInteger(count) || count < 1 || count > 60 ||
+        !Number.isFinite(Number(account.valor)) || Number(account.valor) <= 0 ||
+        (intervals && (intervals.length !== count || intervals.some(value => !Number.isInteger(value) || value <= 0)))) return [];
+    const split = (value: number, index: number) => {
+        const cents = Math.round(value * (mode === "parcela" ? count : 1) * 100);
+        return (Math.floor(cents / count) + (index < cents % count ? 1 : 0)) / 100;
+    };
+    return Array.from({ length: count }, (_, index) => {
+        const date = new Date(`${due}T00:00:00Z`);
+        date.setUTCDate(date.getUTCDate() + (intervals ? intervals[index] : index * 30));
+        const month = new Date(`${baseCompetence}T00:00:00Z`);
+        month.setUTCMonth(month.getUTCMonth() + index);
+        return { numero: index + 1, vencimento: date.toISOString().slice(0, 10), competencia: competenceLabel(month.toISOString()),
+            valor: split(Number(account.valor), index), desconto: split(Number(account.desconto || 0), index), acrescimo: split(Number(account.acrescimo || 0), index) };
+    });
+}
 
 export function netAmount(row: Row) {
     return (Math.round(Number(row.valor || 0) * 100) - Math.round(Number(row.desconto || 0) * 100)

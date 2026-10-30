@@ -53,7 +53,7 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
             const ids = req.empresaIds ?? [req.empresaId!];
             if (config.table === "lancamentos" && parsed.data.resumo) {
                 const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
-                return res.json(await (parsed.data.resumo === "alertas" ? alertsSummary(ids, day) : dashboardSummary(ids, day)));
+                return res.json(await (parsed.data.resumo === "alertas" ? alertsSummary(ids, day) : dashboardSummary(ids, day, typeof parsed.data.ano === "number" ? parsed.data.ano : undefined)));
             }
             const exact = config.filter.parse(Object.fromEntries(Object.entries(req.query).filter(([key]) => !(key in listShape))));
             return res.status(200).json(await listRecords(config, parsed.data, ids, exact));

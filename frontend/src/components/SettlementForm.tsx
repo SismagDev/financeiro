@@ -17,11 +17,12 @@ export function SettlementForm({ account, paymentForms, remaining, busy, formatV
         <div className="form-grid">
             <label className="form-field full-field">Forma de pagamento
                 <Combobox name="forma_pagamento_id" label="Forma de pagamento" required
+                    defaultValue={String(account.forma_pagamento_id || "")}
                     source="formasAtivas" loadOptions={loadOptions}
                     options={paymentForms.filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
             </label>
             <label className="form-field">Valor da baixa
-                <input name="valor" type="number" min="0.01" max={remaining} step="0.01" required defaultValue={remaining.toFixed(2)} />
+                <input name="valor" type="number" min="0.01" step="0.01" required defaultValue={remaining.toFixed(2)} />
             </label>
             <label className="form-field">Data
                 <input name="data" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />

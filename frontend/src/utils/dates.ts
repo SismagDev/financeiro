@@ -1,6 +1,13 @@
 import type { Row } from "../types";
 
 const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+export function localDateInputValue(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+export function savedDashboardYear(value: string | null, date = new Date()) {
+    const year = Number(value);
+    return /^\d{4}$/.test(value || "") && year >= 1000 && year <= 9998 ? year : date.getFullYear();
+}
 export function dateInputValue(value: Row[string]) {
     return String(value ?? "").match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
 }

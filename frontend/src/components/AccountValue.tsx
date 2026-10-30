@@ -13,14 +13,14 @@ export function AccountValueSummary({ account }: { account: Row }) {
     </dl>;
 }
 
-export function AccountValueInput({ account, label = "Valor original" }: { account: Row | null; label?: string }) {
+export function AccountValueInput({ account, label = "Valor original", onChange }: { account: Row | null; label?: string; onChange?: (values: Row) => void }) {
     const [value, setValue] = useState(String(account?.valor ?? ""));
     const [adjustments, setAdjustments] = useState({ desconto: Number(account?.desconto || 0), acrescimo: Number(account?.acrescimo || 0) });
     const [kind, setKind] = useState<"desconto" | "acrescimo">("desconto");
     const net = netAmount({ valor: value, ...adjustments });
     return <div className="account-value-editor full-field">
         <label className="form-field">{label}
-            <input name="valor" type="number" step="0.01" min="0.01" required value={value} placeholder="0,00" onChange={event => setValue(event.target.value)} />
+            <input name="valor" type="number" step="0.01" min="0.01" required value={value} placeholder="0,00" onChange={event => { setValue(event.target.value); onChange?.({ valor: event.target.value, ...adjustments }); }} />
         </label>
         <input type="hidden" name="desconto" value={adjustments.desconto} />
         <input type="hidden" name="acrescimo" value={adjustments.acrescimo} />
@@ -33,7 +33,7 @@ export function AccountValueInput({ account, label = "Valor original" }: { accou
                     </select>
                 </label>
                 <label className="form-field">{kind === "desconto" ? "Descontar" : "Acrescentar"}
-                    <input type="number" min="0" step="0.01" value={adjustments[kind]} onChange={event => setAdjustments({ ...adjustments, [kind]: Number(event.target.value) })} />
+                    <input type="number" min="0" step="0.01" value={adjustments[kind]} onChange={event => { const next = { ...adjustments, [kind]: Number(event.target.value) }; setAdjustments(next); onChange?.({ valor: value, ...next }); }} />
                 </label>
             </div>
             <small className="field-hint">{adjustments.desconto > 0 ? `Desconto: ${money(adjustments.desconto)}. ` : ""}{adjustments.acrescimo > 0 ? `Acréscimo: ${money(adjustments.acrescimo)}. ` : ""}Informe zero para remover o ajuste selecionado.</small>

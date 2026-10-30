@@ -31,7 +31,7 @@ type Props = {
     search: string;
     formatValue: (key: string, value: Row[string]) => string;
     onSearch: (value: string) => void;
-    onCreate: () => void;
+    onCreate: (tipo?: "receber" | "pagar") => void;
     onEdit: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
@@ -98,9 +98,12 @@ export function ResourcePage({
                     <p>Consulte e organize os registros da sua empresa.</p>
                     {companyFilter}
                 </div>
-                <button className="button button-primary" onClick={onCreate}>
+                {showSettlement ? <div className="account-create-buttons">
+                    <button className="button account-receive-button" onClick={() => onCreate("receber")}><Icon name="arrowDown" size={18} /> Receber</button>
+                    <button className="button account-pay-button" onClick={() => onCreate("pagar")}><Icon name="arrowUp" size={18} /> Pagar</button>
+                </div> : <button className="button button-primary" onClick={() => onCreate()}>
                     <Icon name="plus" size={18} /> {showSettlement || resource.key === "baixas" ? "Nova" : "Novo"} {resource.singular}
-                </button>
+                </button>}
             </div>
             <section className="panel list-panel">
                 <div className={`list-toolbar ${personFilters ? "people-toolbar" : ""}`}>
@@ -268,6 +271,8 @@ export function ResourcePage({
                                                 <span className={row[key] ? "role-indicator role-yes" : "role-indicator role-no"} role="img" aria-label={row[key] ? "Sim" : "Não"} title={row[key] ? "Sim" : "Não"}><Icon name={row[key] ? "check" : "close"} size={17} /></span>
                                             ) : key === "status" ? (
                                                 <Status value={row[key]} />
+                                            ) : key === "tipo" && resource.key === "planos" ? (
+                                                <span>{row.tipo === "receber" ? "Receber" : row.tipo === "pagar" ? "Pagar" : "Receber/Pagar"}</span>
                                             ) : key === "tipo" &&
                                               (row.tipo === "pagar" || row.tipo === "receber") ? (
                                                 <span

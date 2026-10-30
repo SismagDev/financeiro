@@ -1,0 +1,1 @@
+ALTER TABLE empresas ADD COLUMN IF NOT EXISTS caixa_data_inicio TIMESTAMPTZ;

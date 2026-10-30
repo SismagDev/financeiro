@@ -2,6 +2,7 @@
 // Exercita PostgreSQL real e HTTP; todos os dados de teste são revertidos.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import express from "express";
 import type { Server } from "node:http";
 import { pool } from "../src/db";
@@ -27,6 +28,7 @@ async function run() {
     const check = (label: string) => { passed++; console.log(`PASS ${label}`); };
     try {
         await client.query("BEGIN");
+        await client.query(await readFile("migrations/011_inicio_caixa_empresa.sql", "utf8"));
         await client.query("INSERT INTO users (id,nome,email,password_hash,role,ativo) VALUES ($1,'Auditoria paginação',$2,'sem-login','comum',TRUE)", [user, `${user}@audit.invalid`]);
         for (const [index, id] of ids.entries()) {
             await client.query("INSERT INTO empresas (id,nome,identificador,ativo,licenca_expira_em) VALUES ($1,'Auditoria paginação',$2,TRUE,CURRENT_TIMESTAMP + INTERVAL '1 year')", [id, `AUD-${index}`]);
@@ -107,6 +109,21 @@ async function run() {
         assert.equal(cashPage.data[49].saldo_depois, cashNext.data[0].saldo_antes);
         assert.equal(cashNext.data.at(-1).saldo_depois, 55);
         check("caixa conserva saldo acumulado entre páginas e saldo final global");
+        await client.query("UPDATE empresas SET caixa_data_inicio='2026-10-31T00:00:00Z' WHERE id=$1", [ids[0]]);
+        const fromDate = await request(`/caixa?${scope}`);
+        assert.equal(fromDate.meta.total, 1); assert.equal(fromDate.saldo_atual, 25);
+        assert.equal(fromDate.data[0].data, "2026-10-31"); assert.equal(fromDate.data[0].saldo_antes, 0);
+        assert.equal((await request(`/movimentacoes?${scope}&unificadas=true`)).meta.total, 71);
+        await client.query("UPDATE empresas SET caixa_data_inicio='2026-01-01T00:00:00Z' WHERE id=$1", [ids[0]]);
+        assert.equal((await request(`/caixa?${scope}`)).meta.total, 71);
+        await client.query("UPDATE empresas SET caixa_data_inicio='2099-01-01T00:00:00Z' WHERE id=$1", [ids[1]]);
+        assert.equal((await request(`/caixa?${scope}`)).meta.total, 71);
+        await client.query("UPDATE empresas SET caixa_data_inicio='2099-01-01T00:00:00Z' WHERE id=$1", [ids[0]]);
+        const future = await request(`/caixa?${scope}`);
+        assert.equal(future.meta.total, 0); assert.equal(future.saldo_atual, 0);
+        await client.query("UPDATE empresas SET caixa_data_inicio=NULL WHERE id=ANY($1::uuid[])", [ids]);
+        assert.equal((await request(`/caixa?${scope}`)).meta.total, 71);
+        check("início do caixa por empresa é inclusivo, afeta saldos e preserva as demais baixas; em branco restaura o histórico");
         const summary = await request(`/lancamentos?empresas=${ids.join(",")}&resumo=dashboard`);
         assert.equal(Number(summary.data.pagar), 6930); assert.equal(Number(summary.data.receber), 6975);
         assert.equal(Number(summary.data.totalPaid), 95); assert.ok(summary.data.rows.length <= 6); assert.equal(summary.data.flowRows.length, 2);

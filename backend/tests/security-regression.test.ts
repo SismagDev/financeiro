@@ -54,6 +54,20 @@ async function request(path: string, options: RequestInit = {}) { const response
 
 test("bloqueia uso de empresa ativa no cabeçalho para editar outra empresa", async () => { updates = 0; const { response } = await request(`/empresas/${expiredCompany}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: JSON.stringify({ nome: "Tentativa" }) }); assert.equal(response.status, 403); assert.equal(updates, 0); });
 test("permite editar a empresa selecionada", async () => { const { response } = await request(`/empresas/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: JSON.stringify({ nome: "Permitida" }) }); assert.equal(response.status, 200); assert.equal(updates, 1); });
+
+test("usuário configura e remove início do caixa; data inválida não grava", async () => {
+    const options = { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany } };
+    const saved = await request(`/empresas/${activeCompany}`, { ...options, body: JSON.stringify({ nome: "Empresa", caixa_data_inicio: "2026-01-01" }) });
+    assert.equal(saved.response.status, 200);
+    assert.deepEqual(companyValues, ["Empresa", "2026-01-01T00:00:00Z", activeCompany]);
+    const count = updates;
+    const invalid = await request(`/empresas/${activeCompany}`, { ...options, body: JSON.stringify({ nome: "Empresa", caixa_data_inicio: "2026-02-30" }) });
+    assert.equal(invalid.response.status, 400); assert.equal(updates, count);
+    const cleared = await request(`/empresas/${activeCompany}`, { ...options, body: JSON.stringify({ nome: "Empresa", caixa_data_inicio: null }) });
+    assert.equal(cleared.response.status, 200); assert.deepEqual(companyValues, ["Empresa", null, activeCompany]);
+    const omitted = await request(`/empresas/${activeCompany}`, { ...options, body: JSON.stringify({ nome: "Empresa" }) });
+    assert.equal(omitted.response.status, 200); assert.deepEqual(companyValues, ["Empresa", activeCompany]);
+});
 test("vínculos só podem ser gerenciados pelo fluxo administrativo global", async () => { const denied = await request(`/empresas/${activeCompany}/usuarios`, { method: "POST", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: JSON.stringify({}) }); assert.equal(denied.response.status, 404); const allowed = await request(`/admin/companies/${activeCompany}/users`, { method: "POST", headers: { "x-test-user": adminId }, body: JSON.stringify({ userId, perfil: "comum" }) }); assert.equal(allowed.response.status, 201); });
 test("login não revela usuário inexistente, senha inválida ou conta inativa", async () => { const cases = [["ausente@test", "qualquer"], ["ativo@test", "errada"], ["inativo@test", "senha-correta"]]; const answers = await Promise.all(cases.map(([email, password]) => request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }))); for (const answer of answers) { assert.equal(answer.response.status, 401); assert.deepEqual(answer.body, { message: "Credenciais inválidas" }); } });
 test("serviço compartilhado recusa valor acima do saldo e tipo incompatível", async () => { const client = { query: async (sql: string) => { if (sql.includes("FROM lancamentos")) return { rows: [{ valor: "100.00", tipo: "receber", status: "pendente" }], rowCount: 1 }; return { rows: [{ total: "0" }], rowCount: 1 }; } } as never; await assert.rejects(() => createSettlement(client, activeCompany, "movimentacoes", { lancamentoId: activeCompany, formaPagamentoId: activeCompany, valor: 101 }), SettlementError); });

@@ -4,6 +4,8 @@ import { historicalRecordId } from "../utils/access-import";
 
 const bool = z.enum(["true", "false"]).transform(value => value === "true").optional();
 export const listShape = {
+    ano: z.coerce.number().int().min(1).max(9998).optional(),
+    tipo_conta: z.enum(["receber", "pagar"]).optional(),
     pagina: z.coerce.number().int().min(1).max(1000000).optional(),
     tamanho: z.coerce.number().int().min(1).max(100).optional(),
     busca: z.string().trim().max(200).optional(),
@@ -33,10 +35,12 @@ export const settlementsSql = (scope = "$1", cash = false) => ["movimentacoes", 
         l.pessoa_id, l.descricao, l.tipo AS categoria, p.nome AS pessoa_nome, fp.descricao AS forma_pagamento_descricao,
         b.descricao AS instituicao
         FROM ${table} s JOIN lancamentos l ON l.id = s.lancamento_id AND l.empresa_id = s.empresa_id
+        ${cash ? "JOIN empresas e ON e.id = s.empresa_id" : ""}
         LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id
         LEFT JOIN formas_pagamento fp ON fp.id = s.forma_pagamento_id AND fp.empresa_id = s.empresa_id
         LEFT JOIN bancos b ON b.id = COALESCE(fp.banco_id, l.banco_id) AND b.empresa_id = l.empresa_id
-        WHERE s.empresa_id = ANY(${scope}::uuid[])`;
+        WHERE s.empresa_id = ANY(${scope}::uuid[])
+        ${cash ? `AND (e.caixa_data_inicio IS NULL OR COALESCE(s.${date}, s.created_at::date) >= (e.caixa_data_inicio AT TIME ZONE 'UTC')::date)` : ""}`;
 }).join(" UNION ALL ");
 
 const launchColumns = `SELECT l.*, p.nome AS pessoa_nome, pc.descricao AS plano_conta_descricao,
@@ -67,6 +71,7 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
     const values: unknown[] = [ids];
     const clauses: string[] = [];
     const param = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (config.table === "planos_contas" && query.tipo_conta) clauses.push(`tipo IN ('ambos', ${param(query.tipo_conta)})`);
     const launchOptions = `SELECT ${query.opcoes === "descricoes" ? "DISTINCT ON (lower(btrim(l.descricao)))" : ""} l.*, p.nome AS pessoa_nome, pc.descricao AS plano_conta_descricao
         FROM lancamentos l LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id
         LEFT JOIN planos_contas pc ON pc.id = l.plano_conta_id AND pc.empresa_id = l.empresa_id
@@ -166,8 +171,9 @@ export async function listRecords(config: Config, query: ListQuery, ids: string[
     return response;
 }
 
-export async function dashboardSummary(ids: string[], day: string) {
-    const result = await pool.query(`WITH accounts AS (${launchesSql}), settlements AS (${settlementsSql()}),
+export async function dashboardSummary(ids: string[], day: string, year?: number) {
+    const result = await pool.query(`WITH accounts AS (${launchesSql}), settlements AS (
+        SELECT * FROM (${settlementsSql()}) s ${year ? "WHERE data_baixa >= $3::date AND data_baixa < $4::date" : ""}),
         overdue AS (SELECT * FROM accounts WHERE status = 'pendente' AND data_vencimento < $2::date)
         SELECT json_build_object(
             'pagar', COALESCE((SELECT SUM(saldo) FROM accounts WHERE tipo = 'pagar' AND status NOT IN ('pago','cancelado')),0),
@@ -178,7 +184,7 @@ export async function dashboardSummary(ids: string[], day: string) {
             'rows', COALESCE((SELECT json_agg(a) FROM (SELECT * FROM accounts ORDER BY created_at DESC, id DESC LIMIT 6) a),'[]'::json),
             'flowRows', COALESCE((SELECT json_agg(f) FROM (SELECT tipo, date_trunc('month', data_baixa)::date::text AS data_fluxo,
                 SUM(valor) AS valor FROM settlements GROUP BY tipo, date_trunc('month', data_baixa)) f),'[]'::json)
-        ) AS data`, [ids, day]);
+        ) AS data`, year ? [ids, day, `${String(year).padStart(4, "0")}-01-01`, `${String(year + 1).padStart(4, "0")}-01-01`] : [ids, day]);
     return result.rows[0];
 }
 

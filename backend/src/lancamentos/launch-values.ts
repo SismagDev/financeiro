@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 export const adjustmentSchema = z.coerce.number().finite().nonnegative().max(9999999999999.99).multipleOf(0.01);
+export const settlementConfirmationShape = {
+    acrescimo_confirmado: adjustmentSchema.optional(),
+    saldo_confirmado: adjustmentSchema.optional(),
+};
+export type SettlementConfirmation = { acrescimo_confirmado?: number; saldo_confirmado?: number };
 type Amounts = { valor: number | string; desconto?: number | string; acrescimo?: number | string };
 
 export function liquidValue(input: Amounts): number {

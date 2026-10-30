@@ -124,8 +124,9 @@ export const resources: Resource[] = [
         endpoint: "/planos-contas",
         singular: "plano de contas",
         icon: "grid",
-        fields: [{ name: "descricao", label: "Nome", required: true, wide: true }],
-        columns: [["descricao", "Plano de contas"]],
+        fields: [{ name: "descricao", label: "Nome", required: true, wide: true },
+            { name: "tipo", label: "Classificação", type: "select", required: true, options: [["receber", "Receber"], ["pagar", "Pagar"], ["ambos", "Receber/Pagar"]] }],
+        columns: [["descricao", "Plano de contas"], ["tipo", "Classificação"]],
     },
     {
         key: "movimentacoes",

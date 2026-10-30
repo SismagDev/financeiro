@@ -6,6 +6,8 @@ import type { Row, User } from "../types";
 import { netAmount } from "../utils/accounts";
 
 type Props = {
+    year: number;
+    onYearChange: (year: number) => void;
     user: User;
     companyFilter?: ReactNode;
     rows: Row[];
@@ -26,6 +28,7 @@ function currency(value: number) {
 }
 
 export function DashboardPage({
+    year, onYearChange,
     companyFilter,
     user,
     rows,
@@ -71,6 +74,12 @@ export function DashboardPage({
                 <button className="button button-primary" onClick={() => onCreate("lancamentos")}>
                     <Icon name="plus" size={18} /> Nova conta
                 </button>
+            </div>
+
+            <div className="dashboard-year-filter">
+                <label>Ano das baixas <input aria-label="Ano das baixas" type="number" min="1000" max="9998" step="1" value={year}
+                    onChange={event => { const next = Number(event.target.value); if (Number.isInteger(next) && next >= 1000 && next <= 9998) onYearChange(next); }} /></label>
+                <span>Filtra o movimentado e o fluxo pela data da baixa. Valores em aberto, vencidos e últimas contas mantêm sua referência atual.</span>
             </div>
 
             <section className="summary-grid">
@@ -140,7 +149,7 @@ export function DashboardPage({
                     </div>
                     <strong>{currency(totalPaid)}</strong>
                     <div className="summary-foot">
-                        <span className="summary-note">Total registrado</span>
+                        <span className="summary-note">Baixas em {year}</span>
                     </div>
                 </article>
             </section>
@@ -150,7 +159,7 @@ export function DashboardPage({
                     <div className="panel-heading">
                         <div>
                             <h2>Fluxo financeiro</h2>
-                            <p>Entradas e saídas efetivamente registradas</p>
+                            <p>Entradas e saídas por data da baixa em {year}</p>
                         </div>
                         <span className="select-chip">
                             Dados registrados <Icon name="chevron" size={15} />

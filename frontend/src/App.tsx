@@ -10,7 +10,7 @@ import { Icon } from "./components/Icon";
 import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
 import type { Company, ListMeta, OptionLoader, Row, User } from "./types";
 import "./App.css";
-import { competenceDate, competenceLabel } from "./utils/dates";
+import { competenceDate, competenceLabel, savedDashboardYear } from "./utils/dates";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const EMPTY_ROWS: Row[] = [];
@@ -229,6 +229,12 @@ function App() {
 
     const [listResult, setListResult] = useState<{ key: string; data: Row[]; meta: ListMeta; balance: number } | null>(null);
     const [summary, setSummary] = useState<{ scope: string; rows: Row[]; flowRows: Row[]; overdueRows: Row[]; pagar: number; receber: number; totalPaid: number; overdue: number } | null>(null);
+    const [dashboardYear, setDashboardYear] = useState(() => {
+        try { return savedDashboardYear(localStorage.getItem("fluxo-dashboard-year")); } catch { return new Date().getFullYear(); }
+    });
+    useEffect(() => {
+        try { localStorage.setItem("fluxo-dashboard-year", String(dashboardYear)); } catch { /* Mantém a escolha durante a sessão. */ }
+    }, [dashboardYear]);
     const [alerts, setAlerts] = useState<{ scope: string; overdue: number; overdueRows: Row[] } | null>(null);
     const alertVersion = useRef(0);
     const requestController = useRef<AbortController | null>(null);
@@ -240,9 +246,10 @@ function App() {
     const [busy, setBusy] = useState(false);
     const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
-    function setModal(next: typeof modal) {
+    const [createAccountType, setCreateAccountType] = useState<"receber" | "pagar" | undefined>(undefined);
+    function setModal(next: typeof modal, tipo?: "receber" | "pagar") {
         formVersion.current++;
-        if (next === "create") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); }
+        if (next === "create") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
@@ -303,6 +310,7 @@ function App() {
     const warningDay = warningDateFormatter.format(new Date());
     const scopeIds = useMemo(() => selectedCompanies.filter(item => item.licenca_status !== "vencida" && (!companyFilter || item.id === companyFilter)).map(item => item.id), [selectedCompanies, companyFilter]);
     const scopeKey = scopeIds.join(",");
+    const dashboardScopeKey = `${scopeKey}:${dashboardYear}`;
     const overdueRows = alerts?.scope === scopeKey ? alerts.overdueRows : EMPTY_ROWS;
     const overdue = alerts?.scope === scopeKey ? Number(alerts.overdue) : 0;
     useEffect(() => {
@@ -387,7 +395,7 @@ function App() {
     const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
     const dateFilters = page === "baixas" ? settlementFilters : undefined;
     const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "data_vencimento" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
-    const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, sort.key, sort.direction]);
+    const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, sort.key, sort.direction, page === "dashboard" ? dashboardYear : null]);
     const requestedPage = pagination.key === filterKey ? pagination.page : 1;
     const pageQuery = useMemo(() => {
         const params = new URLSearchParams({ empresas: scopeKey, pagina: String(requestedPage), tamanho: "50", ordem: sort.key, direcao: sort.direction });
@@ -415,8 +423,8 @@ function App() {
             params.set("mostrar_fornecedores", String(personFilters.mostrarFornecedores));
         }
         const endpoint = page === "dashboard" ? "/lancamentos" : page === "caixa" ? "/caixa" : page === "baixas" ? "/movimentacoes" : resource?.endpoint;
-        return page === "dashboard" ? "/lancamentos?resumo=dashboard&empresas=" + scopeKey : endpoint ? endpoint + "?" + params : "";
-    }, [page, scopeKey, requestedPage, sort.key, sort.direction, search, lancamentoFilters, settlementFilters, personFilters, resource?.endpoint]);
+        return page === "dashboard" ? `/lancamentos?resumo=dashboard&empresas=${scopeKey}&ano=${dashboardYear}` : endpoint ? endpoint + "?" + params : "";
+    }, [page, scopeKey, requestedPage, sort.key, sort.direction, search, lancamentoFilters, settlementFilters, personFilters, resource?.endpoint, dashboardYear]);
     const fetchResources = useCallback(async () => {
         const version = ++loadVersion.current;
         requestController.current?.abort();
@@ -427,7 +435,7 @@ function App() {
         try {
             const result = await api(pageQuery, { signal: controller.signal }, scopeKey.split(",")[0]);
             if (version !== loadVersion.current) return;
-            if (page === "dashboard") { setSummary({ scope: scopeKey, ...result.data }); setAlerts({ scope: scopeKey, overdue: Number(result.data.overdue), overdueRows: result.data.overdueRows }); }
+            if (page === "dashboard") { setSummary({ scope: dashboardScopeKey, ...result.data }); setAlerts({ scope: scopeKey, overdue: Number(result.data.overdue), overdueRows: result.data.overdueRows }); }
             else setListResult({ key: filterKey, data: result.data, meta: result.meta, balance: Number(result.saldo_atual || 0) });
             setLoadedCompanyId(scopeKey.split(",")[0]);
         } catch (error) {
@@ -435,7 +443,7 @@ function App() {
             setListResult(null);
             setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os dados.");
         } finally { if (version === loadVersion.current) setLoading(false); }
-    }, [pageQuery, scopeKey, filterKey, page]);
+    }, [pageQuery, scopeKey, filterKey, page, dashboardScopeKey]);
     useEffect(() => {
         const version = loadVersion;
         const timer = window.setTimeout(() => { void fetchResources(); }, 200);
@@ -461,11 +469,12 @@ function App() {
     const cashRows = useMemo(() => currentRows.map(row => ({ ...row, saldo_antes: cashInitial + Number(row.saldo_antes), saldo_depois: cashInitial + Number(row.saldo_depois) })), [currentRows, cashInitial]);
 
     const fetchOptions = useCallback(async (source: string, query: string, nextPage: number, ids: string[], version: number) => {
-        const key = source === "formasAtivas" ? "formas" : source === "descricoes" ? "lancamentos" : source;
+        const key = source.startsWith("planos:") ? "planos" : source === "formasAtivas" ? "formas" : source === "descricoes" ? "lancamentos" : source;
         const endpoint = resources.find(item => item.key === key)?.endpoint;
         if (!endpoint || !ids.length) return { options: [], hasMore: false };
         const params = new URLSearchParams({ pagina: String(nextPage), tamanho: "50", empresas: ids.join(","), busca: query, opcoes: source === "descricoes" ? "descricoes" : "true" });
         if (source === "formasAtivas") params.set("ativo", "true");
+        if (source.startsWith("planos:")) params.set("tipo_conta", source.split(":")[1]);
         const result = await api(endpoint + "?" + params, {}, ids[0]);
         if (version !== formVersion.current) throw new Error("A empresa ou o formulário foi alterado.");
         setLookups(previous => ({ ...previous, [key]: Array.from(new Map([...(previous[key] || []), ...result.data].map(row => [String(row.empresa_id) + ":" + row.id, row])).values()) }));
@@ -544,12 +553,27 @@ function App() {
         setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
     }
 
+    async function confirmSettlementExtra(accountId: string, empresaId: string, value: number, previousValue = 0): Promise<Row | null> {
+        const version = formVersion.current;
+        const result = await api(`/lancamentos/${accountId}`, {}, empresaId);
+        if (version !== formVersion.current) return null;
+        const balanceCents = Math.round(remainingAmount(result.data, {}) * 100) + Math.round(previousValue * 100);
+        const extraCents = Math.round(value * 100) - balanceCents;
+        if (extraCents <= 0) return {};
+        const formatted = (extraCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        if (!(await ask({ title: "Confirmar acréscimo", message: `O valor da baixa supera o saldo em ${formatted}. Deseja adicionar esse acréscimo somente a esta conta/parcela e registrar a baixa?`, confirmLabel: "Adicionar acréscimo e dar baixa" })) || version !== formVersion.current) return null;
+        return { acrescimo_confirmado: extraCents / 100, saldo_confirmado: balanceCents / 100 };
+    }
+
     async function saveRecord(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!company || !resource) return;
+        if (!company || !resource || busy) return;
         setBusy(true);
         const form = new FormData(event.currentTarget);
-        const darBaixa = modal !== "edit" && resource.key === "lancamentos" && Boolean(form.get("forma_pagamento_id"));
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        const openSettlement = modal === "create" && resource.key === "lancamentos" && submitter instanceof HTMLButtonElement && submitter.value === "gravar-baixa";
+        const darBaixa = !openSettlement && modal !== "edit" && resource.key === "lancamentos" && Boolean(form.get("forma_pagamento_id"));
+        const version = formVersion.current;
         const payload: Row = {};
         if (resource.key === "lancamentos") {
             payload.desconto = Number(form.get("desconto") || 0);
@@ -584,12 +608,15 @@ function App() {
                 if (payload.data_baixa) payload[origin === "recebimentos" ? "data_recebimento" : "data_movimentacao"] = payload.data_baixa;
                 delete payload.data_baixa;
                 if (editing) delete payload.lancamento_id;
+                const confirmation = await confirmSettlementExtra(String(editing ? selectedRow.lancamento_id : payload.lancamento_id), formCompanyId, Number(payload.valor ?? selectedRow?.valor), editing ? Number(selectedRow.valor) : 0);
+                if (!confirmation) return;
+                Object.assign(payload, confirmation);
             }
             const endpoint =
                 !editing && resource.key === "lancamentos" && parcelas > 1
                     ? "/lancamentos/parcelado"
                     : `${settlementEndpoint || resource.endpoint}${editing ? `/${selectedRow.id}` : ""}`;
-            await api(
+            const result = await api(
                 endpoint,
                 {
                     method: editing ? "PATCH" : "POST",
@@ -607,6 +634,7 @@ function App() {
                 },
                 formCompanyId,
             );
+            if (version !== formVersion.current) return;
             notify(
                 editing
                     ? "Alterações salvas."
@@ -616,6 +644,18 @@ function App() {
             );
             setModal(null);
             setSelectedRow(null);
+            if (openSettlement) {
+                const settlementVersion = formVersion.current;
+                try {
+                    const createdId = parcelas > 1 ? result.ids[0] : result.id;
+                    const saved = await api(`/lancamentos/${createdId}`, {}, formCompanyId);
+                    if (settlementVersion !== formVersion.current) return;
+                    setSelectedRow({ ...saved.data, forma_pagamento_id: form.get("forma_pagamento_id") || "" });
+                    setModal("settle");
+                } catch (error) {
+                    notify(`Conta gravada, mas não foi possível abrir a baixa. ${error instanceof Error ? error.message : "Tente pela listagem de Contas."}`, "error");
+                }
+            }
             await reloadCurrent();
         } catch (e) {
             notify(e instanceof Error ? e.message : "Não foi possível salvar.", "error");
@@ -631,6 +671,8 @@ function App() {
         const values = Object.fromEntries(new FormData(event.currentTarget));
         setBusy(true);
         try {
+            const confirmation = await confirmSettlementExtra(String(selectedRow.id), String(selectedRow.empresa_id), Number(values.valor));
+            if (!confirmation) return;
             await api(
                 `/lancamentos/${selectedRow.id}/baixar`,
                 {
@@ -639,6 +681,7 @@ function App() {
                         forma_pagamento_id: values.forma_pagamento_id,
                         valor: Number(values.valor),
                         data: values.data,
+                        ...confirmation,
                     }),
                 },
                 String(selectedRow.empresa_id),
@@ -711,9 +754,10 @@ function App() {
         try {
             await api(`/empresas/${company.id}`, {
                 method: "PATCH",
-                body: JSON.stringify({ nome: values.nome, ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
+                body: JSON.stringify({ nome: values.nome, caixa_data_inicio: values.caixa_data_inicio || null, ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
             }, company.id);
             await loadCompanies(user?.id);
+            if (page === "caixa") await fetchResources();
             setModal(null);
             notify("Dados da empresa atualizados.");
         } catch (e) {
@@ -758,11 +802,11 @@ function App() {
         { key: "baixas", title: "Baixas", icon: "arrows", section: "FINANCEIRO" },
     ];
     const grouped = ["WORKSPACE", "FINANCEIRO", "CADASTROS"];
-    const visibleRows = summary?.scope === scopeKey ? summary.rows : EMPTY_ROWS;
-    const cashIn = summary?.scope === scopeKey ? Number(summary.receber) : 0;
-    const cashOut = summary?.scope === scopeKey ? Number(summary.pagar) : 0;
-    const flowRows = summary?.scope === scopeKey ? summary.flowRows : EMPTY_ROWS;
-    const totalPaid = summary?.scope === scopeKey ? Number(summary.totalPaid) : 0;
+    const visibleRows = summary?.scope === dashboardScopeKey ? summary.rows : EMPTY_ROWS;
+    const cashIn = summary?.scope === dashboardScopeKey ? Number(summary.receber) : 0;
+    const cashOut = summary?.scope === dashboardScopeKey ? Number(summary.pagar) : 0;
+    const flowRows = summary?.scope === dashboardScopeKey ? summary.flowRows : EMPTY_ROWS;
+    const totalPaid = summary?.scope === dashboardScopeKey ? Number(summary.totalPaid) : 0;
 
     function displayValue(key: string, value: Row[string]) {
         if (key === "competencia") return competenceLabel(value) || "—";
@@ -836,7 +880,7 @@ function App() {
                                     onChange={() => changeCompany(item)} />
                                 <span>{item.nome}{item.licenca_status === "vencida" && <small> · Licença vencida</small>}</span>
                             </label>)}
-                           <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Editar empresa</button>
+                           <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Configurações da empresa</button>
                         </div>
                     )}
                     <nav className="nav-scroll">
@@ -1019,6 +1063,8 @@ function App() {
                             <section className="panel license-expired"><span className="eyebrow muted">LICENÇA VENCIDA</span><h2>Esta empresa está com a licença expirada.</h2><p>Solicite a renovação a um administrador para voltar a utilizar os recursos financeiros.</p></section>
                         ) : page === "dashboard" ? (
                             <DashboardPage
+                                year={dashboardYear}
+                                onYearChange={setDashboardYear}
                                 user={user}
                                 companyFilter={companyFilterControl}
                                 rows={visibleRows}
@@ -1066,9 +1112,9 @@ function App() {
                                 personFilters={page === "pessoas" ? personFilters : undefined}
                                 onPersonFiltersChange={page === "pessoas" ? setPersonFilters : undefined}
                                 paymentForms={dashboardData.formas || []}
-                                onCreate={() => {
+                                onCreate={tipo => {
                                     setSelectedRow(null);
-                                    setModal("create");
+                                    setModal("create", tipo);
                                 }}
                                 onEdit={(row) => {
                                     setSelectedRow(row);
@@ -1099,7 +1145,7 @@ function App() {
                             if (event.target === event.currentTarget) setModal(null);
                         }}
                     >
-                        <section className={`modal-card ${modal === "details" || (modal === "edit" && resource?.key === "lancamentos") ? "account-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? `account-create-modal ${modal === "edit" ? "account-edit-modal" : ""}` : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1119,7 +1165,7 @@ function App() {
                                         {modal === "company"
                                             ? "Cadastre sua empresa"
                                             : modal === "company-edit"
-                                              ? "Editar empresa"
+                                              ? "Configurações da empresa"
                                               : modal === "details"
                                               ? "Detalhes das baixas"
                                               : modal === "settle"
@@ -1128,7 +1174,8 @@ function App() {
                                                   : "Registrar pagamento"
                                               : modal === "edit"
                                                 ? `Editar ${resource?.singular}${resource?.key === "lancamentos" && currentAccount?.numero ? " nº " + currentAccount.numero : ""}`
-                                                : `${["lancamentos", "baixas"].includes(resource?.key || "") ? "Nova" : "Novo"} ${resource?.singular}`}
+                                                : resource?.key === "lancamentos" ? `Nova Conta${createAccountType === "receber" ? " a Receber" : createAccountType === "pagar" ? " a Pagar" : ""}`
+                                                : `${resource?.key === "baixas" ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
                                 <button className="icon-button" onClick={() => setModal(null)}>
@@ -1156,6 +1203,11 @@ function App() {
                                             autoFocus
                                         />
                                     </label>{user?.role === "admin" && <label className="form-field full-field">CPF/CNPJ <span className="optional-label">Opcional</span><input name="cnpj" inputMode="numeric" maxLength={14} placeholder="Somente números" pattern="[0-9]{11}([0-9]{3})?" defaultValue={company.cnpj || ""} /></label>}
+                                    <label className="form-field full-field">
+                                        Início da contabilização do caixa <span className="optional-label">Opcional</span>
+                                        <input name="caixa_data_inicio" type="date" defaultValue={company.caixa_data_inicio || ""} />
+                                        <small>O caixa considera somente baixas nesta data ou posteriores. Em branco, considera todo o histórico.</small>
+                                    </label>
                                     <div className="modal-actions">
                                         <button
                                             type="button"
@@ -1174,7 +1226,7 @@ function App() {
                                 <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                                     busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => { setModal(null); setSelectedRow(null); }} />
                             ) : (
-                                <>
+                                <div className={modal === "edit" && resource?.key === "lancamentos" ? "account-edit-layout" : undefined}>
                                 <form onSubmit={saveRecord} className="record-form">
                                     {modal === "create" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
                                         value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
@@ -1188,16 +1240,18 @@ function App() {
                                             lookups={formLookups}
                                             companyId={formCompanyId}
                                             editing={modal === "edit"}
-                                        />
-                                    )}
-                                    {!selectedRow && resource?.key === "lancamentos" && (
-                                        <label className="form-field full-field immediate-settlement">
-                                            <span>
-                                                Forma para baixa imediata{" "}
-                                                <span className="optional-label">Opcional</span>
-                                            </span>
-                                            <Combobox source="formasAtivas" loadOptions={loadFormOptions} key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
-                                        </label>
+                                            fixedType={modal === "create" ? createAccountType : undefined}
+                                        >
+                                            {modal === "create" && resource?.key === "lancamentos" && (
+                                                <label className="form-field full-field immediate-settlement">
+                                                    <span>
+                                                        Forma para baixa imediata{" "}
+                                                        <span className="optional-label">Opcional</span>
+                                                    </span>
+                                                    <Combobox source="formasAtivas" loadOptions={loadFormOptions} key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
+                                                </label>
+                                            )}
+                                        </RecordFormFields>
                                     )}
                                     <div className="modal-actions">
                                         <button
@@ -1215,16 +1269,18 @@ function App() {
                                             disabled={busy}
                                         >
                                             {busy && <span className="spinner" />}
-                                            {modal === "edit" ? "Salvar alterações" : "Cadastrar"}{" "}
+                                            {modal === "edit" ? "Salvar alterações" : resource?.key === "lancamentos" ? "Gravar" : "Cadastrar"}{" "}
                                             <span>→</span>
                                         </button>
-
+                                        {modal === "create" && resource?.key === "lancamentos" && <button type="submit" name="acao" value="gravar-baixa" className="button account-save-settle" disabled={busy} title="Grava a conta e abre a baixa. No parcelamento, abre a primeira parcela.">
+                                            <Icon name="check" size={18} /> Gravar + Baixa
+                                        </button>}
                                     </div>
                                 </form>
                                 {modal === "edit" && resource?.key === "lancamentos" && currentAccount &&
                                     <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />}
-                                </>
+                                </div>
                             )}
                             </Suspense>
                         </section>

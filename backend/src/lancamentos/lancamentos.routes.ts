@@ -17,7 +17,7 @@ import { formatarErroZod } from "../utils/zod";
 import { createSettlement, SettlementError } from "./settlement.service";
 
 import { createLaunches, updateLaunch } from "./lancamentos.service";
-import { adjustmentSchema } from "./launch-values";
+import { adjustmentSchema, settlementConfirmationShape } from "./launch-values";
 
 const competencia = z.string().date()
     .refine(value => value.endsWith("-01"), "A competência deve ser o primeiro dia do mês")
@@ -120,7 +120,7 @@ for (const [path, validator] of [["/", createSchema], ["/parcelado", installment
 
 router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
-    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional() }).strict().safeParse(req.body);
+    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional(), ...settlementConfirmationShape }).strict().safeParse(req.body);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
     if (!body.success) return res.status(400).json(formatarErroZod(body.error));
 
@@ -138,12 +138,15 @@ router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
             formaPagamentoId: body.data.forma_pagamento_id,
             valor: body.data.valor,
             data: body.data.data,
+            acrescimo_confirmado: body.data.acrescimo_confirmado,
+            saldo_confirmado: body.data.saldo_confirmado,
         });
         await client.query("COMMIT");
         return res.status(201).json({ id: id.data, status: settlement.status, saldo: settlement.saldo });
     } catch (error) {
         await client.query("ROLLBACK");
         if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
+        if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error));
         return res.status(400).json({ message: "Não foi possível dar baixa no lançamento" });
     } finally { client.release(); }
 });

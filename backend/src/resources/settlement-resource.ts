@@ -6,20 +6,21 @@ import { requireEmpresa } from "../middlewares/empresa";
 import { formatarErroZod } from "../utils/zod";
 import { createSettlement, deleteSettlement, SettlementError, type SettlementKind, updateSettlement } from "../lancamentos/settlement.service";
 import { listRecords, listShape } from "./list.service";
+import { settlementConfirmationShape, type SettlementConfirmation } from "../lancamentos/launch-values";
 
 const uuid = z.string().uuid();
 const amount = z.coerce.number().positive();
 
-type CreateBody = { lancamento_id: string; forma_pagamento_id: string; valor: number; data_movimentacao?: string; data_recebimento?: string };
-type PatchBody = { forma_pagamento_id?: string; valor?: number; data_movimentacao?: string; data_recebimento?: string };
+type CreateBody = SettlementConfirmation & { lancamento_id: string; forma_pagamento_id: string; valor: number; data_movimentacao?: string; data_recebimento?: string };
+type PatchBody = SettlementConfirmation & { forma_pagamento_id?: string; valor?: number; data_movimentacao?: string; data_recebimento?: string };
 
 export function createSettlementResourceRouter(table: SettlementKind): Router {
     const router = Router();
     const dateColumn = table === "movimentacoes" ? "data_movimentacao" : "data_recebimento";
     const columns = `id, empresa_id, lancamento_id, forma_pagamento_id, valor, ${dateColumn}, created_at,
         (SELECT fp.descricao FROM formas_pagamento fp WHERE fp.empresa_id = ${table}.empresa_id AND fp.id = ${table}.forma_pagamento_id) AS forma_pagamento_descricao`;
-    const createSchema = z.object({ lancamento_id: uuid, forma_pagamento_id: uuid, valor: amount, [dateColumn]: z.string().date().optional() }).strict();
-    const patchSchema = z.object({ forma_pagamento_id: uuid.optional(), valor: amount.optional(), [dateColumn]: z.string().date().optional() }).strict();
+    const createSchema = z.object({ lancamento_id: uuid, forma_pagamento_id: uuid, valor: amount, [dateColumn]: z.string().date().optional(), ...settlementConfirmationShape }).strict();
+    const patchSchema = z.object({ forma_pagamento_id: uuid.optional(), valor: amount.optional(), [dateColumn]: z.string().date().optional(), ...settlementConfirmationShape }).strict();
     const filterSchema = z.object({ lancamento_id: uuid.optional(), forma_pagamento_id: uuid.optional(), [dateColumn]: z.string().date().optional() }).strict();
     const writeAccess = requireRole("admin", "contador", "comum");
 
@@ -47,10 +48,10 @@ export function createSettlementResourceRouter(table: SettlementKind): Router {
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
-            const settlement = await createSettlement(client, req.empresaId!, table, { lancamentoId: data.lancamento_id, formaPagamentoId: data.forma_pagamento_id, valor: data.valor, data: data[dateColumn] });
+            const settlement = await createSettlement(client, req.empresaId!, table, { lancamentoId: data.lancamento_id, formaPagamentoId: data.forma_pagamento_id, valor: data.valor, data: data[dateColumn], acrescimo_confirmado: data.acrescimo_confirmado, saldo_confirmado: data.saldo_confirmado });
             await client.query("COMMIT");
             return res.status(201).json({ id: settlement.id });
-        } catch (error) { await client.query("ROLLBACK"); if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message }); return res.status(400).json({ message: "Não foi possível registrar a baixa" }); }
+        } catch (error) { await client.query("ROLLBACK"); if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error)); if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message }); return res.status(400).json({ message: "Não foi possível registrar a baixa" }); }
         finally { client.release(); }
     });
     router.patch("/:id", writeAccess, async (req: Request, res: Response) => {
@@ -63,10 +64,10 @@ export function createSettlementResourceRouter(table: SettlementKind): Router {
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
-            const id = await updateSettlement(client, req.empresaId!, table, recordId.data, { formaPagamentoId: data.forma_pagamento_id, valor: data.valor, data: data[dateColumn] });
+            const id = await updateSettlement(client, req.empresaId!, table, recordId.data, { formaPagamentoId: data.forma_pagamento_id, valor: data.valor, data: data[dateColumn], acrescimo_confirmado: data.acrescimo_confirmado, saldo_confirmado: data.saldo_confirmado });
             await client.query("COMMIT");
             return res.json({ id });
-        } catch (error) { await client.query("ROLLBACK"); if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message }); return res.status(400).json({ message: "Não foi possível atualizar a baixa" }); }
+        } catch (error) { await client.query("ROLLBACK"); if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error)); if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message }); return res.status(400).json({ message: "Não foi possível atualizar a baixa" }); }
         finally { client.release(); }
     });
     router.delete("/:id", writeAccess, async (req: Request, res: Response) => {

@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../src/db";
 import { createLaunches, installmentCompetence } from "../src/lancamentos/lancamentos.service";
 import { competenceDate, competenceLabel, dateInputValue } from "../../frontend/src/utils/dates";
+import { installmentPreview } from "../../frontend/src/utils/accounts";
 
 const company = "11111111-1111-4111-8111-111111111111";
 const originalConnect = pool.connect.bind(pool);
@@ -41,6 +42,28 @@ beforeEach(() => {
 });
 after(() => { pool.connect = originalConnect; });
 const input = { descricao: "Água", valor: 100, tipo: "pagar" as const, data_vencimento: "2026-10-05" };
+
+test("prévia da criação corresponde aos valores, ajustes, datas e competências persistidos", async () => {
+    for (const mode of ["total", "parcela"] as const) {
+        for (const intervals of [undefined, [15, 45, 60]]) {
+            inserts = [];
+            const amounts = { valor: 100.01, desconto: 4.03, acrescimo: 1.02 };
+            await createLaunches(company, { ...input, ...amounts, parcelas: 3, modo_valor: mode, competencia: "2026-12-01", intervalos: intervals });
+            const preview = installmentPreview(amounts, 3, mode, input.data_vencimento, "dez/2026", intervals);
+            assert.equal(preview.length, 3);
+            preview.forEach((row, index) => {
+                const saved = inserts[index]!;
+                assert.equal(row.valor, Number(saved[2]));
+                assert.equal(row.desconto, Number(saved[15]));
+                assert.equal(row.acrescimo, Number(saved[16]));
+                assert.equal(row.vencimento, saved[4]);
+                assert.equal(row.competencia, competenceLabel(String(saved[10])));
+            });
+        }
+    }
+    assert.deepEqual(installmentPreview({ valor: 100 }, 3, "total", input.data_vencimento, "dez/2026", [15]), []);
+    assert.deepEqual(installmentPreview({ valor: 100 }, 61, "total", input.data_vencimento, "dez/2026"), []);
+});
 
 test("datas ISO retornadas pela API preenchem campos de edição sem mudar o dia", () => {
     for (const value of ["2026-10-05", "2026-10-05T00:00:00.000Z", "2026-10-05T03:00:00.000Z"]) assert.equal(dateInputValue(value), "2026-10-05");

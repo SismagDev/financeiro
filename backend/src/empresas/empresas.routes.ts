@@ -4,6 +4,7 @@ import { pool } from "../db";
 import { attachCurrentUser, requireRole } from "../middlewares/auth";
 import { requireEmpresa } from "../middlewares/empresa";
 import { formatarErroZod } from "../utils/zod";
+import { updateCompanySettings } from "./empresas.service";
 
 const identificacao = z.string().regex(/^\d{11}(\d{3})?$/);
 const empresaSchema = z.object({ nome: z.string().trim().min(2).max(200), cnpj: identificacao.nullable().optional() }).strict();
@@ -26,7 +27,9 @@ function conflictMessage(conflict: { nome: string }, nome: string) {
 router.get("/", async (req: Request, res: Response) => {
     try {
         const result = await pool.query(
-            `SELECT e.id, e.nome, e.cnpj, e.identificador, e.ativo, ue.perfil, e.licenca_expira_em, CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
+            `SELECT e.id, e.nome, e.cnpj, e.identificador, e.ativo, ue.perfil, e.licenca_expira_em,
+             to_char(e.caixa_data_inicio AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS caixa_data_inicio,
+             CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
              JOIN users_empresas ue ON ue.empresa_id = e.id WHERE ue.user_id = $1 AND e.ativo = TRUE ORDER BY e.nome`,
             [req.currentUser?.id],
         );
@@ -55,7 +58,7 @@ router.post("/", requireRole("admin"), async (req: Request, res: Response) => {
 
 router.patch("/:empresaId", requireEmpresa, async (req: Request, res: Response) => {
     const empresaId = z.string().uuid().safeParse(req.params.empresaId);
-    const parsed = empresaSchema.safeParse(req.body);
+    const parsed = empresaSchema.extend({ caixa_data_inicio: z.string().date().nullable().optional() }).safeParse(req.body);
     if (!empresaId.success) return res.status(400).json({ message: "ID de empresa inválido" });
     if (req.empresaId !== empresaId.data) return res.status(403).json({ message: "A empresa da requisição não corresponde à empresa selecionada" });
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
@@ -69,9 +72,11 @@ router.patch("/:empresaId", requireEmpresa, async (req: Request, res: Response) 
             const conflict = await findCompanyConflict(req.currentUser?.id, parsed.data.nome, parsed.data.cnpj, empresaId.data);
             if (conflict) return res.status(409).json({ message: conflictMessage(conflict, parsed.data.nome) });
         }
-        const result = globalAdmin && cnpjRequested
-            ? await pool.query("UPDATE empresas SET nome = $1, cnpj = $2 WHERE id = $3 RETURNING id", [parsed.data.nome, parsed.data.cnpj ?? null, empresaId.data])
-            : await pool.query("UPDATE empresas SET nome = $1 WHERE id = $2 RETURNING id", [parsed.data.nome, empresaId.data]);
+        const result = await updateCompanySettings(empresaId.data, {
+            nome: parsed.data.nome,
+            ...(globalAdmin && cnpjRequested ? { cnpj: parsed.data.cnpj ?? null } : {}),
+            caixa_data_inicio: parsed.data.caixa_data_inicio,
+        });
         if (!result.rowCount) return res.status(404).json({ message: "Empresa não encontrada" });
         return res.status(200).json({ id: result.rows[0].id });
     } catch (error: unknown) {

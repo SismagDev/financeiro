@@ -17,7 +17,7 @@ import { formatarErroZod } from "../utils/zod";
 import { createSettlement, SettlementError } from "./settlement.service";
 
 import { createLaunches, updateLaunch } from "./lancamentos.service";
-import { adjustmentSchema, settlementConfirmationShape } from "./launch-values";
+import { adjustmentSchema, customInstallmentsSchema, settlementAdjustmentShape, settlementConfirmationShape } from "./launch-values";
 
 const competencia = z.string().date()
     .refine(value => value.endsWith("-01"), "A competência deve ser o primeiro dia do mês")
@@ -81,6 +81,7 @@ const schema = {
     }),
     filter: strictObject({
         descricao: filterText(),
+        plano_conta_id: uuidField,
         tipo: tipo.optional(),
         status: status.optional(),
         data_vencimento: optionalDate,
@@ -96,7 +97,7 @@ router.use(attachCurrentUser, requireEmpresa);
 const writeAccess = requireRole("admin", "contador", "comum");
 
 
-const createSchema = schema.create.extend({ forma_pagamento_id: z.string().uuid().optional() });
+const createSchema = schema.create.extend({ forma_pagamento_id: z.string().uuid().optional(), parcelas_personalizadas: customInstallmentsSchema.optional() });
 const installmentSchema = createSchema.extend({
     pessoa_id: z.string().uuid().nullable().optional(),
     banco_id: z.string().uuid().nullable().optional(),
@@ -120,7 +121,7 @@ for (const [path, validator] of [["/", createSchema], ["/parcelado", installment
 
 router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
-    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional(), ...settlementConfirmationShape }).strict().safeParse(req.body);
+    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional(), ...settlementConfirmationShape, ...settlementAdjustmentShape }).strict().safeParse(req.body);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
     if (!body.success) return res.status(400).json(formatarErroZod(body.error));
 
@@ -137,6 +138,8 @@ router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
             lancamentoId: id.data,
             formaPagamentoId: body.data.forma_pagamento_id,
             valor: body.data.valor,
+            desconto: body.data.desconto,
+            acrescimo: body.data.acrescimo,
             data: body.data.data,
             acrescimo_confirmado: body.data.acrescimo_confirmado,
             saldo_confirmado: body.data.saldo_confirmado,

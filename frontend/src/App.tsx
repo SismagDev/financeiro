@@ -4,12 +4,12 @@ import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
 import { CompanySelect } from "./components/CompanySelect";
 import { companyRows, toggleCompany } from "./utils/companies";
-import { Combobox } from "./components/Combobox";
-import { remainingAmount } from "./utils/accounts";
+import { remainingAmount, settlementPrincipal } from "./utils/accounts";
 import { Icon } from "./components/Icon";
 import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
 import type { Company, ListMeta, OptionLoader, Row, User } from "./types";
 import "./App.css";
+import "./theme.css";
 import { competenceDate, competenceLabel, savedDashboardYear } from "./utils/dates";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -469,16 +469,18 @@ function App() {
     const cashRows = useMemo(() => currentRows.map(row => ({ ...row, saldo_antes: cashInitial + Number(row.saldo_antes), saldo_depois: cashInitial + Number(row.saldo_depois) })), [currentRows, cashInitial]);
 
     const fetchOptions = useCallback(async (source: string, query: string, nextPage: number, ids: string[], version: number) => {
-        const key = source.startsWith("planos:") ? "planos" : source === "formasAtivas" ? "formas" : source === "descricoes" ? "lancamentos" : source;
+        const descriptions = source === "descricoes" || source.startsWith("descricoes:");
+        const key = source.startsWith("planos:") ? "planos" : source === "formasAtivas" ? "formas" : descriptions ? "lancamentos" : source;
         const endpoint = resources.find(item => item.key === key)?.endpoint;
         if (!endpoint || !ids.length) return { options: [], hasMore: false };
-        const params = new URLSearchParams({ pagina: String(nextPage), tamanho: "50", empresas: ids.join(","), busca: query, opcoes: source === "descricoes" ? "descricoes" : "true" });
+        const params = new URLSearchParams({ pagina: String(nextPage), tamanho: "50", empresas: ids.join(","), busca: query, opcoes: descriptions ? "descricoes" : "true" });
         if (source === "formasAtivas") params.set("ativo", "true");
         if (source.startsWith("planos:")) params.set("tipo_conta", source.split(":")[1]);
+        if (source.startsWith("descricoes:")) params.set("plano_conta_id", source.slice("descricoes:".length));
         const result = await api(endpoint + "?" + params, {}, ids[0]);
         if (version !== formVersion.current) throw new Error("A empresa ou o formulário foi alterado.");
         setLookups(previous => ({ ...previous, [key]: Array.from(new Map([...(previous[key] || []), ...result.data].map(row => [String(row.empresa_id) + ":" + row.id, row])).values()) }));
-        const options: [string, string][] = result.data.map((row: Row) => [String(source === "descricoes" ? String(row.descricao).trim() : row.id),
+        const options: [string, string][] = result.data.map((row: Row) => [String(descriptions ? String(row.descricao).trim() : row.id),
             source === "lancamentos" ? [row.pessoa_nome, row.descricao, row.tipo === "receber" ? "Recebimento" : "Pagamento"].filter(Boolean).join(" · ") : String(row.nome || row.descricao || row.id)]);
         return { options, hasMore: result.meta.pagina < result.meta.paginas };
     }, []);
@@ -586,7 +588,6 @@ function App() {
         const form = new FormData(event.currentTarget);
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
         const openSettlement = modal === "create" && resource.key === "lancamentos" && submitter instanceof HTMLButtonElement && submitter.value === "gravar-baixa";
-        const darBaixa = !openSettlement && modal !== "edit" && resource.key === "lancamentos" && Boolean(form.get("forma_pagamento_id"));
         const version = formVersion.current;
         const payload: Row = {};
         if (resource.key === "lancamentos") {
@@ -606,6 +607,8 @@ function App() {
             const editing = modal === "edit" && selectedRow?.id;
             const parcelas = Number(payload.parcelas || 1);
             const modoValor = String(form.get("modo_valor") || "total");
+            const customInstallments = !editing && resource.key === "lancamentos" && form.get("parcelas_personalizadas")
+                ? JSON.parse(String(form.get("parcelas_personalizadas"))) as { valor: number; data_vencimento: string }[] : undefined;
             const detalharParcelamento = form.get("detalhar_parcelamento") === "on";
             const intervalos = String(form.get("intervalos") || "")
                 .split(",")
@@ -622,7 +625,8 @@ function App() {
                 if (payload.data_baixa) payload[origin === "recebimentos" ? "data_recebimento" : "data_movimentacao"] = payload.data_baixa;
                 delete payload.data_baixa;
                 if (editing) delete payload.lancamento_id;
-                const confirmation = await confirmSettlementExtra(String(editing ? selectedRow.lancamento_id : payload.lancamento_id), formCompanyId, Number(payload.valor ?? selectedRow?.valor), editing ? Number(selectedRow.valor) : 0);
+                const confirmation = await confirmSettlementExtra(String(editing ? selectedRow.lancamento_id : payload.lancamento_id), formCompanyId,
+                    settlementPrincipal({ ...(editing ? selectedRow : {}), valor: payload.valor ?? selectedRow?.valor }), editing ? settlementPrincipal(selectedRow) : 0);
                 if (!confirmation) return;
                 Object.assign(payload, confirmation);
             }
@@ -636,7 +640,7 @@ function App() {
                     method: editing ? "PATCH" : "POST",
                     body: JSON.stringify({
                         ...payload,
-                        ...(darBaixa ? { forma_pagamento_id: form.get("forma_pagamento_id") } : {}),
+                        ...(customInstallments ? { parcelas_personalizadas: customInstallments } : {}),
                         ...(!editing && resource.key === "lancamentos" && parcelas > 1
                             ? {
                                   parcelas,
@@ -664,7 +668,7 @@ function App() {
                     const createdId = parcelas > 1 ? result.ids[0] : result.id;
                     const saved = await api(`/lancamentos/${createdId}`, {}, formCompanyId);
                     if (settlementVersion !== formVersion.current) return;
-                    setSelectedRow({ ...saved.data, forma_pagamento_id: form.get("forma_pagamento_id") || "" });
+                    setSelectedRow(saved.data);
                     setModal("settle");
                 } catch (error) {
                     notify(`Conta gravada, mas não foi possível abrir a baixa. ${error instanceof Error ? error.message : "Tente pela listagem de Contas."}`, "error");
@@ -685,8 +689,6 @@ function App() {
         const values = Object.fromEntries(new FormData(event.currentTarget));
         setBusy(true);
         try {
-            const confirmation = await confirmSettlementExtra(String(selectedRow.id), String(selectedRow.empresa_id), Number(values.valor));
-            if (!confirmation) return;
             await api(
                 `/lancamentos/${selectedRow.id}/baixar`,
                 {
@@ -695,7 +697,8 @@ function App() {
                         forma_pagamento_id: values.forma_pagamento_id,
                         valor: Number(values.valor),
                         data: values.data,
-                        ...confirmation,
+                        desconto: Number(values.desconto || 0),
+                        acrescimo: Number(values.acrescimo || 0),
                     }),
                 },
                 String(selectedRow.empresa_id),
@@ -1154,7 +1157,7 @@ function App() {
                             if (event.target === event.currentTarget) setModal(null);
                         }}
                     >
-                        <section className={`modal-card ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? `account-create-modal ${modal === "edit" ? "account-edit-modal" : ""}` : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? "account-create-modal account-edit-modal" : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1187,6 +1190,8 @@ function App() {
                                                 : `${resource?.key === "baixas" || resource?.key === "pessoas" ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
+                                {modal === "create" && resource?.key === "lancamentos" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
+                                    value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
                                 <button className="icon-button" onClick={() => setModal(null)}>
                                     <Icon name="close" />
                                 </button>
@@ -1237,7 +1242,7 @@ function App() {
                             ) : (
                                 <div className={modal === "edit" && resource?.key === "lancamentos" ? "account-edit-layout" : undefined}>
                                 <form onSubmit={saveRecord} className="record-form">
-                                    {modal === "create" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
+                                    {modal === "create" && resource?.key !== "lancamentos" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
                                         value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
                                     {resource && (
                                         <RecordFormFields
@@ -1250,17 +1255,7 @@ function App() {
                                             companyId={formCompanyId}
                                             editing={modal === "edit"}
                                             fixedType={modal === "create" ? createAccountType : undefined}
-                                        >
-                                            {modal === "create" && resource?.key === "lancamentos" && (
-                                                <label className="form-field full-field immediate-settlement">
-                                                    <span>
-                                                        Forma para baixa imediata{" "}
-                                                        <span className="optional-label">Opcional</span>
-                                                    </span>
-                                                    <Combobox source="formasAtivas" loadOptions={loadFormOptions} key={formCompanyId} name="forma_pagamento_id" label="Forma para baixa imediata" placeholder="Selecione para cadastrar e dar baixa" options={(formLookups.formas || []).filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
-                                                </label>
-                                            )}
-                                        </RecordFormFields>
+                                        />
                                     )}
                                     <div className="modal-actions">
                                         <button
@@ -1281,7 +1276,7 @@ function App() {
                                             {modal === "edit" ? "Salvar alterações" : resource?.key === "lancamentos" ? "Gravar" : "Cadastrar"}{" "}
                                             <span>→</span>
                                         </button>
-                                        {modal === "create" && resource?.key === "lancamentos" && <button type="submit" name="acao" value="gravar-baixa" className="button account-save-settle" disabled={busy} title="Grava a conta e abre a baixa. No parcelamento, abre a primeira parcela.">
+                                        {modal === "create" && resource?.key === "lancamentos" && <button type="submit" name="acao" value="gravar-baixa" className="button button-secondary" disabled={busy} title="Grava a conta e abre a baixa. No parcelamento, abre a primeira parcela.">
                                             <Icon name="check" size={18} /> Gravar + Baixa
                                         </button>}
                                     </div>

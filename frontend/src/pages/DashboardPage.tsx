@@ -66,7 +66,7 @@ export function DashboardPage({
             <div className="page-heading">
                 <div>
                     <h1>
-                        Olá, {user.nome?.split(" ")[0] || "tudo bem"} <span className="wave">✳</span>
+                        <Icon name="grid" size={25} /> Olá, {user.nome?.split(" ")[0] || "tudo bem"}
                     </h1>
                     <p>Aqui está o resumo financeiro da sua empresa.</p>
                     {companyFilter}

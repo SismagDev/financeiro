@@ -93,6 +93,7 @@ export function ResourcePage({
     const columnClass = (key: string) => [
         key === "numero" ? "account-number" : "",
         showSettlement && key === "descricao" ? "account-description-cell" : "",
+        showSettlement && key === "tipo" ? "account-type-cell" : "",
         resource.key === "pessoas" && key === "endereco" ? "person-address-cell" : "",
         resource.key === "pessoas" && key === "responsavel_nome" ? "person-contact-cell" : "",
         resource.key === "pessoas" && ["documento", "responsavel_cpf"].includes(key) ? "person-document-cell" : "",
@@ -107,7 +108,7 @@ export function ResourcePage({
         <>
             <div className="page-heading list-heading">
                 <div>
-                    <h1>{resource.title}</h1>
+                    <h1><Icon name={resource.key === "baixas" ? "check" : resource.icon} size={25} />{resource.title}</h1>
                     <p>Consulte e organize os registros da sua empresa.</p>
                     {companyFilter}
                 </div>

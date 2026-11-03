@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { createSettlement, SettlementError } from "./settlement.service";
-import { liquidValue, validateLaunchAmounts } from "./launch-values";
+import { customInstallmentsSchema, liquidValue, validateLaunchAmounts } from "./launch-values";
 import { isHistoricalRecord } from "../utils/access-import";
 
 export type LaunchInput = {
@@ -14,6 +14,7 @@ export type LaunchInput = {
     pessoa_id?: string | null; banco_id?: string | null; plano_conta_id?: string | null;
     status?: "pendente" | "parcial" | "pago" | "cancelado";
     parcelas?: number; modo_valor?: "total" | "parcela"; intervalos?: number[];
+    parcelas_personalizadas?: { valor: number; data_vencimento: string }[];
     forma_pagamento_id?: string;
 };
 
@@ -32,6 +33,9 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
         if (isHistoricalRecord(empresaId, "formas_pagamento", input.forma_pagamento_id))
             throw new SettlementError("Forma de pagamento reservada à importação");
         const parcelas = input.parcelas ?? 1;
+        const personalizadas = input.parcelas_personalizadas ? customInstallmentsSchema.parse(input.parcelas_personalizadas) : undefined;
+        if (personalizadas && personalizadas.length !== parcelas)
+            throw new SettlementError("Informe valor e vencimento para todas as parcelas");
         if (importId && parcelas !== 1) throw new SettlementError("O ID de importação exige uma conta única");
         if (input.intervalos && input.intervalos.length !== parcelas)
             throw new SettlementError("Informe um vencimento em dias para cada parcela");
@@ -43,7 +47,8 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
                 field === "plano_conta_id" ? [empresaId, input[field], input.tipo] : [empresaId, input[field]]);
             if (!result.rowCount) throw new SettlementError("Uma referência não existe ou pertence a outra empresa" + (field === "plano_conta_id" ? ", ou o plano é incompatível com o tipo da conta" : ""));
         }
-        const totalCentavos = Math.round(input.valor * (input.modo_valor === "parcela" ? parcelas : 1) * 100);
+        const totalCentavos = personalizadas ? personalizadas.reduce((sum, parcela) => sum + Math.round(parcela.valor * 100), 0)
+            : Math.round(input.valor * (input.modo_valor === "parcela" ? parcelas : 1) * 100);
         const base = Math.floor(totalCentavos / parcelas);
         const split = (value: number) => {
             const cents = Math.round(value * (input.modo_valor === "parcela" ? parcelas : 1) * 100);
@@ -55,9 +60,10 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
         const dataBase = new Date(`${input.data_vencimento}T00:00:00Z`);
         const ids: string[] = [];
         for (let index = 0; index < parcelas; index++) {
-            const due = new Date(dataBase);
-            due.setUTCDate(due.getUTCDate() + (input.intervalos ? input.intervalos[index]! : index * 30));
-            const amount = (base + (index < totalCentavos % parcelas ? 1 : 0)) / 100;
+            const personalizada = personalizadas?.[index];
+            const due = personalizada ? new Date(`${personalizada.data_vencimento}T00:00:00Z`) : new Date(dataBase);
+            if (!personalizada) due.setUTCDate(due.getUTCDate() + (input.intervalos ? input.intervalos[index]! : index * 30));
+            const amount = personalizada?.valor ?? (base + (index < totalCentavos % parcelas ? 1 : 0)) / 100;
             const desconto = discountAt(index), acrescimo = surchargeAt(index);
             const net = liquidValue(validateLaunchAmounts({ valor: amount, desconto, acrescimo }));
             const result = await client.query<{ id: string }>(
@@ -96,8 +102,8 @@ export async function updateLaunch(empresaId: string, id: string, input: Partial
         const net = liquidValue(validateLaunchAmounts({ ...previous, ...input }));
         const sums = await client.query<{ total: string }>(
             `SELECT COALESCE(SUM(valor), 0) AS total FROM (
-                SELECT valor FROM recebimentos WHERE empresa_id = $1 AND lancamento_id = $2
-                UNION ALL SELECT valor FROM movimentacoes WHERE empresa_id = $1 AND lancamento_id = $2
+                SELECT valor + desconto - acrescimo AS valor FROM recebimentos WHERE empresa_id = $1 AND lancamento_id = $2
+                UNION ALL SELECT valor + desconto - acrescimo FROM movimentacoes WHERE empresa_id = $1 AND lancamento_id = $2
              ) baixas`, [empresaId, id]);
         const settled = Number(sums.rows[0].total);
         if (settled - net > 0.009) throw new SettlementError("O valor líquido não pode ser menor que o total já baixado", 409);

@@ -43,6 +43,38 @@ beforeEach(() => {
 after(() => { pool.connect = originalConnect; });
 const input = { descricao: "Água", valor: 100, tipo: "pagar" as const, data_vencimento: "2026-10-05" };
 
+test("parcelas editadas persistem valores e datas próprios nos dois modos e o total acompanha a soma", async () => {
+    const parcelas_personalizadas = [{ valor: 41.02, data_vencimento: "2026-10-09" }, { valor: 33.33, data_vencimento: "2026-12-15" }, { valor: 29.99, data_vencimento: "2027-01-02" }];
+    for (const modo_valor of ["total", "parcela"] as const) {
+        inserts = [];
+        const response = await createLaunches(company, { ...input, parcelas: 3, modo_valor, competencia: "2026-10-01", parcelas_personalizadas });
+        assert.equal(response.ids?.length, 3);
+        assert.equal(inserts.reduce((sum, row) => sum + Math.round(Number(row[2]) * 100), 0), 10434);
+        inserts.forEach((row, index) => {
+            assert.equal(row[0], company);
+            assert.equal(row[2], parcelas_personalizadas[index]!.valor.toFixed(2));
+            assert.equal(row[4], parcelas_personalizadas[index]!.data_vencimento);
+            assert.equal(row[8], index + 1);
+            assert.equal(row[10], ["2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z"][index]);
+        });
+    }
+});
+
+test("parcela única editada e baixa imediata de consumidores existentes usam o valor personalizado", async () => {
+    await createLaunches(company, { ...input, forma_pagamento_id: company, parcelas_personalizadas: [{ valor: 79.99, data_vencimento: "2026-12-21" }] });
+    assert.equal(inserts[0]![2], "79.99");
+    assert.equal(inserts[0]![4], "2026-12-21");
+    assert.equal(settled["1"], 79.99);
+});
+
+test("parcelas personalizadas inválidas ou incompletas não gravam nenhuma conta", async () => {
+    for (const parcelas_personalizadas of [[], [{ valor: 0, data_vencimento: "2026-10-01" }], [{ valor: 1.001, data_vencimento: "2026-10-01" }], [{ valor: 1, data_vencimento: "2026-02-30" }], [{ valor: 1, data_vencimento: "2026-10-01" }]]) {
+        await assert.rejects(createLaunches(company, { ...input, parcelas: 2, parcelas_personalizadas }));
+        assert.equal(inserts.length, 0);
+        assert.ok(statements.includes("ROLLBACK"));
+    }
+});
+
 test("prévia da criação corresponde aos valores, ajustes, datas e competências persistidos", async () => {
     for (const mode of ["total", "parcela"] as const) {
         for (const intervals of [undefined, [15, 45, 60]]) {

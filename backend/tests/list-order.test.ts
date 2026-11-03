@@ -36,3 +36,19 @@ test("consulta da conta por ID mantém a empresa e não depende de busca, perío
     assert.deepEqual(built.values, [[company], id]);
     assert.doesNotMatch(built.where, /ILIKE|data_vencimento|status/);
 });
+
+test("sugestões de descrição filtram plano e empresa antes da deduplicação e preservam a busca", () => {
+    const plan = "22222222-2222-4222-8222-222222222222";
+    const config = { table: "lancamentos", fields: ["descricao", "plano_conta_id"] };
+    const built = buildList(config, { opcoes: "descricoes", busca: "Aluguel", pagina: 2 }, [company], { plano_conta_id: plan });
+    assert.match(built.source, /SELECT DISTINCT ON \(lower\(btrim\(l.descricao\)\)\)/);
+    assert.match(built.source, /WHERE l.empresa_id = ANY\(\$1::uuid\[\]\) AND l.plano_conta_id = \$2 ORDER BY/);
+    assert.doesNotMatch(built.where, /plano_conta_id/);
+    assert.match(built.where, /descricao ILIKE \$3/);
+    assert.deepEqual(built.values, [[company], plan, "%Aluguel%"]);
+    const all = buildList(config, { opcoes: "descricoes" }, [company]);
+    assert.doesNotMatch(all.source, /AND l.plano_conta_id/);
+    assert.deepEqual(all.values, [[company]]);
+    // O filtro normal de contas permanece no fluxo de filtros existente.
+    assert.match(buildList(config, {}, [company], { plano_conta_id: plan }).where, /plano_conta_id = \$2/);
+});

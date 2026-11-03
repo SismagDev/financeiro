@@ -51,7 +51,10 @@ export function AccountSettlements({ account, data, busy, formatValue, onRemove,
             <tbody>{rows.map(row => <tr key={String(row.id)}>
                 <td>{formatValue("data_baixa", row.data_recebimento || row.data_movimentacao)}</td>
                 <td>{row.forma_pagamento_descricao || formatValue("forma_pagamento_id", row.forma_pagamento_id)}</td>
-                <td className="amount-cell">{formatValue("valor", row.valor)}</td>
+                <td className="amount-cell">{formatValue("valor", row.valor)}
+                    {Number(row.desconto) > 0 && <small className="settlement-adjustment-note">Desconto: {formatValue("valor", row.desconto)}</small>}
+                    {Number(row.acrescimo) > 0 && <small className="settlement-adjustment-note">Acréscimo: {formatValue("valor", row.acrescimo)}</small>}
+                </td>
                 <td className="row-actions delete-actions"><button type="button" className="row-delete" disabled={busy} title="Excluir baixa" aria-label="Excluir esta baixa"
                     onClick={() => onRemove(row)}><Icon name="trash" size={16} /></button></td>
             </tr>)}</tbody>

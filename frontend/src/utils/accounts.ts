@@ -26,6 +26,14 @@ export function netAmount(row: Row) {
         + Math.round(Number(row.acrescimo || 0) * 100)) / 100;
 }
 
+export function liquidSettlementValue(base: number, discount: number, surcharge: number) {
+    return netAmount({ valor: base, desconto: discount, acrescimo: surcharge });
+}
+
+export function settlementPrincipal(row: Row) {
+    return netAmount({ valor: row.valor, desconto: row.acrescimo, acrescimo: row.desconto });
+}
+
 export function matchesAccount(account: Row, search: string, people: Row[]) {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     const person = people.find(item => item.id === account.pessoa_id);
@@ -37,7 +45,7 @@ export function remainingAmount(row: Row, data: Record<string, Row[]>) {
     const records = row.tipo === "receber" ? data.recebimentos || [] : data.movimentacoes || [];
     const settled = records
         .filter(item => item.lancamento_id === row.id)
-        .reduce((sum, item) => sum + Number(item.valor || 0), 0);
+        .reduce((sum, item) => sum + settlementPrincipal(item), 0);
     return Math.max(0, Math.round((netAmount(row) - settled) * 100) / 100);
 }
 

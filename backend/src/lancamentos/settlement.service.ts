@@ -1,11 +1,11 @@
 import type { PoolClient } from "pg";
-import { liquidValue, validateLaunchAmounts, type SettlementConfirmation } from "./launch-values";
+import { adjustmentSchema, liquidValue, validateLaunchAmounts, type SettlementAdjustments, type SettlementConfirmation } from "./launch-values";
 import { isHistoricalRecord } from "../utils/access-import";
 
 export type SettlementKind = "movimentacoes" | "recebimentos";
 type SettlementConfig = { table: SettlementKind; launchType: "pagar" | "receber"; dateColumn: "data_movimentacao" | "data_recebimento" };
 
-type SettlementInput = SettlementConfirmation & { lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
+type SettlementInput = SettlementConfirmation & SettlementAdjustments & { lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
 type SettlementPatch = SettlementConfirmation & { formaPagamentoId?: string; valor?: number; data?: string };
 
 export class SettlementError extends Error {
@@ -51,7 +51,7 @@ async function ensureValueFits(
     confirmation: SettlementConfirmation = {},
 ) {
     const result = await client.query<{ total: string }>(
-        `SELECT COALESCE(SUM(valor), 0) AS total FROM ${config.table}
+        `SELECT COALESCE(SUM(valor), 0) + COALESCE(SUM(desconto), 0) - COALESCE(SUM(acrescimo), 0) AS total FROM ${config.table}
          WHERE empresa_id = $1 AND lancamento_id = $2 AND ($3::uuid IS NULL OR id <> $3)`,
         [empresaId, lancamentoId, ignoredId ?? null],
     );
@@ -76,7 +76,7 @@ async function refreshLaunchStatus(client: PoolClient, empresaId: string, lancam
     const launch = launchResult.rows[0];
     if (!launch || launch.status === "cancelado") return { status: launch?.status ?? "pendente", saldo: 0 };
     const sumResult = await client.query<{ total: string }>(
-        `SELECT COALESCE(SUM(valor), 0) AS total FROM ${config.table} WHERE empresa_id = $1 AND lancamento_id = $2`,
+        `SELECT COALESCE(SUM(valor), 0) + COALESCE(SUM(desconto), 0) - COALESCE(SUM(acrescimo), 0) AS total FROM ${config.table} WHERE empresa_id = $1 AND lancamento_id = $2`,
         [empresaId, lancamentoId],
     );
     const total = Number(sumResult.rows[0].total);
@@ -91,11 +91,18 @@ export async function createSettlement(client: PoolClient, empresaId: string, ta
     const launch = await findLaunch(client, empresaId, input.lancamentoId, config);
     await validatePaymentForm(client, empresaId, input.formaPagamentoId, source);
     if (!Number.isFinite(input.valor) || input.valor <= 0) throw new SettlementError("Informe um valor de baixa positivo");
-    await ensureValueFits(client, empresaId, input.lancamentoId, launch, input.valor, config, undefined, input);
+    const desconto = adjustmentSchema.parse(input.desconto ?? 0);
+    const acrescimo = adjustmentSchema.parse(input.acrescimo ?? 0);
+    // O caixa registra o valor efetivo; o saldo da conta é abatido pelo principal quitado.
+    const principal = liquidValue({ valor: input.valor, desconto: acrescimo, acrescimo: desconto });
+    if (principal <= 0 || desconto > principal) throw new SettlementError("Confira o valor do saldo e os ajustes da baixa");
+    if ((desconto > 0 || acrescimo > 0) && (input.acrescimo_confirmado !== undefined || input.saldo_confirmado !== undefined))
+        throw new SettlementError("Informe os ajustes da baixa sem a confirmação de acréscimo anterior");
+    await ensureValueFits(client, empresaId, input.lancamentoId, launch, principal, config, undefined, input);
     const result = await client.query<{ id: string }>(
-        `INSERT INTO ${config.table} (empresa_id, lancamento_id, forma_pagamento_id, valor, ${config.dateColumn})
-         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE)) RETURNING id`,
-        [empresaId, input.lancamentoId, input.formaPagamentoId, input.valor.toFixed(2), input.data ?? null],
+        `INSERT INTO ${config.table} (empresa_id, lancamento_id, forma_pagamento_id, valor, ${config.dateColumn}, desconto, acrescimo)
+         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7) RETURNING id`,
+        [empresaId, input.lancamentoId, input.formaPagamentoId, input.valor.toFixed(2), input.data ?? null, desconto.toFixed(2), acrescimo.toFixed(2)],
     );
     const launchStatus = await refreshLaunchStatus(client, empresaId, input.lancamentoId, config);
     return { id: result.rows[0].id, ...launchStatus };
@@ -103,8 +110,8 @@ export async function createSettlement(client: PoolClient, empresaId: string, ta
 
 export async function updateSettlement(client: PoolClient, empresaId: string, table: SettlementKind, id: string, input: SettlementPatch) {
     const config = configFor(table);
-    const existingResult = await client.query<{ lancamento_id: string; forma_pagamento_id: string; valor: string; data: string }>(
-        `SELECT lancamento_id, forma_pagamento_id, valor, ${config.dateColumn}::text AS data
+    const existingResult = await client.query<{ lancamento_id: string; forma_pagamento_id: string; valor: string; desconto: string; acrescimo: string; data: string }>(
+        `SELECT lancamento_id, forma_pagamento_id, valor, desconto, acrescimo, ${config.dateColumn}::text AS data
          FROM ${config.table} WHERE empresa_id = $1 AND id = $2 FOR UPDATE`,
         [empresaId, id],
     );
@@ -117,7 +124,9 @@ export async function updateSettlement(client: PoolClient, empresaId: string, ta
     const paymentFormId = input.formaPagamentoId ?? existing.forma_pagamento_id;
     await validatePaymentForm(client, empresaId, paymentFormId);
     if (!Number.isFinite(value) || value <= 0) throw new SettlementError("Informe um valor de baixa positivo");
-    await ensureValueFits(client, empresaId, existing.lancamento_id, launch, value, config, id, input);
+    const principal = liquidValue({ valor: value, desconto: existing.acrescimo, acrescimo: existing.desconto });
+    if (principal <= 0 || Number(existing.desconto || 0) > principal) throw new SettlementError("Confira o valor e os ajustes originais desta baixa");
+    await ensureValueFits(client, empresaId, existing.lancamento_id, launch, principal, config, id, input);
     const result = await client.query<{ id: string }>(
         `UPDATE ${config.table} SET forma_pagamento_id = $1, valor = $2, ${config.dateColumn} = COALESCE($3::date, ${config.dateColumn})
          WHERE empresa_id = $4 AND id = $5 RETURNING id`,

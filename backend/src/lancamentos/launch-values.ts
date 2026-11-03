@@ -1,11 +1,20 @@
 import { z } from "zod";
 
 export const adjustmentSchema = z.coerce.number().finite().nonnegative().max(9999999999999.99).multipleOf(0.01);
+export const customInstallmentsSchema = z.array(z.object({
+    valor: adjustmentSchema.refine(value => value > 0, "Informe um valor positivo para a parcela"),
+    data_vencimento: z.string().date(),
+}).strict()).min(1).max(60);
 export const settlementConfirmationShape = {
     acrescimo_confirmado: adjustmentSchema.optional(),
     saldo_confirmado: adjustmentSchema.optional(),
 };
 export type SettlementConfirmation = { acrescimo_confirmado?: number; saldo_confirmado?: number };
+export const settlementAdjustmentShape = {
+    desconto: adjustmentSchema.optional(),
+    acrescimo: adjustmentSchema.optional(),
+};
+export type SettlementAdjustments = { desconto?: number; acrescimo?: number };
 type Amounts = { valor: number | string; desconto?: number | string; acrescimo?: number | string };
 
 export function liquidValue(input: Amounts): number {

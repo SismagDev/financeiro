@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Pagination } from "../components/Pagination";
+import { Icon } from "../components/Icon";
 import type { ListMeta, Row } from "../types";
 
 type CashRow = Row & {
@@ -38,12 +39,12 @@ export function CashPage({
         <>
             <div className="page-heading list-heading">
                 <div>
-                    <h1>Gestão de caixa</h1>
+                    <h1><Icon name="wallet" size={25} />Gestão de caixa</h1>
                     <p>Veja, em ordem, como cada entrada e saída alterou o saldo.</p>
                     {companyFilter}
                 </div>
                 <button className="button button-primary" onClick={onRefresh}>
-                    Atualizar
+                    <Icon name="arrows" size={17} /> Atualizar
                 </button>
             </div>
             <section className="summary-grid">

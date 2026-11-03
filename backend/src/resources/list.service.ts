@@ -27,7 +27,7 @@ type Config = { table: string; fields: string[]; searchFields?: string[] };
 export const settlementsSql = (scope = "$1", cash = false) => ["movimentacoes", "recebimentos"].map(table => {
     const receiving = table === "recebimentos";
     const date = receiving ? "data_recebimento" : "data_movimentacao";
-    return `SELECT s.id, s.empresa_id, s.lancamento_id, s.forma_pagamento_id, s.valor, s.created_at,
+    return `SELECT s.id, s.empresa_id, s.lancamento_id, s.forma_pagamento_id, s.valor, s.desconto, s.acrescimo, s.created_at,
         '${table}'::text AS origem, '${receiving ? "Recebimento" : "Pagamento"}'::text AS natureza,
         '${receiving ? "receber" : "pagar"}'::text AS tipo, ${cash ? `COALESCE(s.${date}, s.created_at::date)` : `s.${date}`} AS data_baixa,
         ${receiving ? "s.data_recebimento" : "NULL::date"} AS data_recebimento,
@@ -50,8 +50,8 @@ const launchColumns = `SELECT l.*, p.nome AS pessoa_nome, pc.descricao AS plano_
     LEFT JOIN planos_contas pc ON pc.id = l.plano_conta_id AND pc.empresa_id = l.empresa_id`;
 const launchesSql = `${launchColumns}
     LEFT JOIN (SELECT empresa_id, lancamento_id, SUM(valor) AS total, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa
-        FROM (SELECT empresa_id, lancamento_id, valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = ANY($1::uuid[])
-              UNION ALL SELECT empresa_id, lancamento_id, valor, data_recebimento FROM recebimentos WHERE empresa_id = ANY($1::uuid[])) s
+        FROM (SELECT empresa_id, lancamento_id, valor + desconto - acrescimo AS valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = ANY($1::uuid[])
+              UNION ALL SELECT empresa_id, lancamento_id, valor + desconto - acrescimo, data_recebimento FROM recebimentos WHERE empresa_id = ANY($1::uuid[])) s
         GROUP BY empresa_id, lancamento_id) s ON s.empresa_id = l.empresa_id AND s.lancamento_id = l.id
     WHERE l.empresa_id = ANY($1::uuid[])`;
 
@@ -59,8 +59,8 @@ const launchesSql = `${launchColumns}
 // O dashboard mantém a agregação por empresa para consultar todo o conjunto uma única vez.
 const launchesListSql = `${launchColumns} LEFT JOIN LATERAL (
     SELECT SUM(valor) AS total, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa FROM (
-        SELECT valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
-        UNION ALL SELECT valor, data_recebimento FROM recebimentos WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
+        SELECT valor + desconto - acrescimo AS valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
+        UNION ALL SELECT valor + desconto - acrescimo, data_recebimento FROM recebimentos WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
     ) s) s ON TRUE WHERE l.empresa_id = ANY($1::uuid[])`;
 
 export function buildList(config: Config, query: ListQuery, ids: string[], exact: Record<string, unknown> = {}) {
@@ -72,10 +72,12 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
     const clauses: string[] = [];
     const param = (value: unknown) => { values.push(value); return `$${values.length}`; };
     if (config.table === "planos_contas" && query.tipo_conta) clauses.push(`tipo IN ('ambos', ${param(query.tipo_conta)})`);
+    const descriptionPlan = launches && query.opcoes === "descricoes" && exact.plano_conta_id !== undefined
+        ? ` AND l.plano_conta_id = ${param(exact.plano_conta_id)}` : "";
     const launchOptions = `SELECT ${query.opcoes === "descricoes" ? "DISTINCT ON (lower(btrim(l.descricao)))" : ""} l.*, p.nome AS pessoa_nome, pc.descricao AS plano_conta_descricao
         FROM lancamentos l LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id
         LEFT JOIN planos_contas pc ON pc.id = l.plano_conta_id AND pc.empresa_id = l.empresa_id
-        WHERE l.empresa_id = ANY($1::uuid[]) ${query.opcoes === "descricoes" ? "ORDER BY lower(btrim(l.descricao)), l.id" : ""}`;
+        WHERE l.empresa_id = ANY($1::uuid[])${descriptionPlan} ${query.opcoes === "descricoes" ? "ORDER BY lower(btrim(l.descricao)), l.id" : ""}`;
     const source = launches ? query.opcoes ? launchOptions : launchesListSql : settlements ? settlementsSql("$1", cash) : `SELECT t.*${config.table === "formas_pagamento" ? ", b.descricao AS banco_descricao" : ""}
         FROM ${config.table} t ${config.table === "formas_pagamento" ? "LEFT JOIN bancos b ON b.id = t.banco_id AND b.empresa_id = t.empresa_id" : ""}
         WHERE t.empresa_id = ANY($1::uuid[])`;
@@ -85,6 +87,7 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
     }
     for (const [key, value] of Object.entries(exact)) {
         if (value === undefined) continue;
+        if (descriptionPlan && key === "plano_conta_id") continue;
         // Os nomes provêm exclusivamente dos schemas dos recursos.
         clauses.push(`${key} ${config.searchFields?.includes(key) ? "ILIKE" : "="} ${param(config.searchFields?.includes(key) ? `%${value}%` : value)}`);
     }
@@ -195,8 +198,8 @@ export async function alertsSummary(ids: string[], day: string) {
         'overdue', (SELECT COUNT(*) FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status = 'pendente' AND data_vencimento < $2::date),
         'overdueRows', COALESCE((SELECT json_agg(a) FROM (
             SELECT l.*, GREATEST(0, l.valor - COALESCE(l.desconto,0) + COALESCE(l.acrescimo,0) - COALESCE((
-                SELECT SUM(valor) FROM (SELECT valor FROM movimentacoes m WHERE m.empresa_id = l.empresa_id AND m.lancamento_id = l.id
-                    UNION ALL SELECT valor FROM recebimentos r WHERE r.empresa_id = l.empresa_id AND r.lancamento_id = l.id) s),0)) AS saldo
+                SELECT SUM(valor) FROM (SELECT valor + desconto - acrescimo AS valor FROM movimentacoes m WHERE m.empresa_id = l.empresa_id AND m.lancamento_id = l.id
+                    UNION ALL SELECT valor + desconto - acrescimo FROM recebimentos r WHERE r.empresa_id = l.empresa_id AND r.lancamento_id = l.id) s),0)) AS saldo
             FROM (SELECT * FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status = 'pendente' AND data_vencimento < $2::date
                 ORDER BY data_vencimento, id LIMIT 5) l
         ) a), '[]'::json)) AS data`, [ids, day]);

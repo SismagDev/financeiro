@@ -1,0 +1,295 @@
+/* Paleta compartilhada: petróleo para estrutura, turquesa para ações e cores financeiras semânticas. */
+:root {
+    --ink: #193e47;
+    --muted: #526c73;
+    --green: #087e74;
+    --deep: #103e47;
+    --mint: #d7f0e9;
+    --line: #d1e3df;
+    --paper: #fff;
+    --bg: #f0f6f4;
+    --shadow: 0 3px 12px #103e4709;
+    --control-border: #9ebeb7;
+    --panel-border: #c1d9d2;
+    --accent: #087e74;
+    --accent-hover: #07665f;
+    --accent-soft: #e0f3ed;
+    --income: #167447;
+    --income-soft: #e5f5e9;
+    --income-hover: #ceeada;
+    --expense: #ad3c2c;
+    --expense-soft: #fff0e9;
+    --expense-hover: #f9dfd2;
+    --warning: #8a520c;
+    --warning-soft: #fff0cf;
+    --info: #2d5fa1;
+    --info-soft: #e9f0fc;
+    --danger: #ad3647;
+    --danger-soft: #fbecef;
+    --delete-background: var(--danger-soft);
+    --delete-hover-background: #f5d8df;
+    --delete-foreground: var(--danger);
+    color: var(--ink);
+    background: var(--bg);
+}
+
+body, .app-shell, .admin-page, .onboarding, .full-loader { background: var(--bg); color: var(--ink); }
+::selection { color: #103e47; background: #bce9dd; }
+button, input, select, textarea { accent-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+.resource-table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; }
+.button, .icon-button, .summary-card, .panel { box-shadow: none; }
+.button:hover { transform: none; }
+
+/* Navegação e hierarquia. */
+.sidebar, .auth-art { background: var(--deep); }
+.brand-mark { background: #087e74; border-radius: 8px; }
+.brand-dot { color: #5cdec0; }
+.sidebar .nav-item { color: #c9e1df; }
+.sidebar .nav-label { color: #95c8c3; }
+.sidebar .nav-item:hover { color: #fff; background: #ffffff12; }
+.sidebar .nav-item.active { background: #bfeee0; color: #124f4b; box-shadow: inset 3px 0 #4ad4af; }
+.sidebar .nav-count { background: #8d382c; color: #fff; }
+.company-switch, .sidebar-bottom { border-color: #ffffff24; }
+.company-switch { background: #ffffff0b; }
+.company-info small, .profile-info small { color: #b7d8d3; }
+.company-icon, .user-avatar { background: #c7ecdf; color: #175a50; }
+.topbar { background: #fff; border-bottom: 2px solid #9ed8c7; }
+.breadcrumbs, .today-label { color: var(--muted); }
+.breadcrumbs b { color: var(--ink); }
+.topbar-user { background: var(--accent-soft); color: var(--accent-hover); }
+.page-heading h1, .admin-header h1 { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+.page-heading h1 > svg, .admin-header h1 > svg { color: var(--accent); flex-shrink: 0; }
+.page-heading p, .panel-heading p, .muted, .eyebrow.muted { color: var(--muted); }
+.panel-heading h2, .modal-head h2, .onboarding-card h1 { color: var(--ink); }
+.panel, .summary-card, .onboarding-card { background: var(--paper); border-color: var(--panel-border); }
+.list-count, .list-count b { color: var(--muted); }
+.list-count b { color: var(--accent-hover); }
+
+/* Contraste dos controles e estados compartilhados. */
+.button-primary, .auth-submit, .account-create-modal .modal-actions .button-primary {
+    background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: none;
+}
+.button-primary:hover, .auth-submit:hover, .account-create-modal .modal-actions .button-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.button-primary:disabled { background: #dbe7e3; color: #526c65; border-color: #c4d7d0; opacity: 1; }
+.button-secondary, .button-outline, .filter-button, .select-chip, .button-quiet, .icon-button { background: #fff; color: var(--accent-hover); border-color: var(--control-border); }
+.button-secondary, .button-outline { border: 1px solid var(--control-border); }
+.button-secondary:hover, .button-outline:hover, .filter-button:hover, .button-quiet:hover, .icon-button:hover { background: var(--accent-soft); color: var(--accent-hover); }
+.button-quiet { background: #edf5f2; }
+.pagination .button:disabled { color: #526c65; background: #eef4f1; border-color: #d2e1db; opacity: 1; }
+.page-heading .button svg { color: currentColor; }
+.text-button, .link-button, .quick-arrow { color: var(--accent-hover); }
+.form-field, .admin-user-form label, .admin-company-form label, .inline-filters > label { color: var(--ink); }
+.field-hint, .settle-hint, .optional-label { color: var(--muted); }
+.form-field input:not([type=checkbox]):not([type=radio]), .form-field textarea, .form-field select,
+.auth-card input, .search-box, .inline-filters input:not([type=checkbox]), .admin-search,
+.combobox .combobox-control input, .company-filter select, .company-form-field select,
+.account-create-modal :is(input:not([type=checkbox]):not([type=radio]), textarea, select, .combobox-control) {
+    border-color: var(--control-border); color: var(--ink); background-color: #fff;
+}
+input::placeholder, textarea::placeholder, .auth-card input::placeholder,
+.form-field input::placeholder, .search-box input::placeholder { color: #647d81; opacity: 1; }
+.combobox-toggle { color: var(--accent-hover); background: #e9f5ef; border-color: var(--control-border); }
+.combobox-results, .company-dropdown { border-color: var(--control-border); }
+.combobox-results button:hover, .combobox-results button:focus, .combobox-results button.active,
+.combobox-results button[aria-selected=true], .company-option:hover, .add-company:hover { background: var(--accent-soft); color: var(--ink); }
+.combobox-clear, .search-clear { color: var(--muted); }
+.combobox-clear:hover, .search-clear:hover { background: var(--accent-soft); color: var(--accent-hover); }
+.company-filter, .zoom-controls output, .zoom-controls button { color: var(--accent-hover); }
+.search-box input, .search-input input { color: var(--ink); }
+.form-field :is(input, textarea, select):disabled, .combobox-control input:disabled { background: #edf3f0; color: #526c65; }
+.form-field :is(input, textarea, select)[aria-invalid=true], input[aria-invalid=true] { border-color: var(--danger); }
+.role-choice { border-color: var(--panel-border); background: #fff; }
+.role-choice:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.role-choice input:checked + .custom-check { background: var(--accent); border-color: var(--accent); }
+.role-choice b { color: var(--ink); }
+.role-choice small { color: var(--muted); }
+
+/* Tabelas: a cor reforça cabeçalho, seleção e significado financeiro, sem aumentar as linhas. */
+.data-table thead th, .table-wrap thead th, .bounded-list-area .table-wrap thead th {
+    background: #e4f2ec; color: #315d57; border-color: var(--panel-border);
+}
+.sort-button { color: #315d57; }
+.sort-button.active { color: var(--accent-hover); }
+.data-table tbody td { color: #3f5d64; border-bottom-color: #e0ebe6; }
+.data-table tbody tr:hover td, .resource-table tbody tr:focus-within td { background: var(--accent-soft); }
+.resource-formas .inactive-payment-form td { background: #eef0ef; color: #5f6d69; }
+.resource-formas .inactive-payment-form:hover td { background: #e3e7e5; }
+.pagination { color: var(--muted); border-color: var(--panel-border); }
+.empty-icon, .onboarding-icon { color: var(--accent); background: var(--accent-soft); }
+.empty-state > b { color: var(--ink); }
+.empty-state p { color: var(--muted); }
+.installment-tag { color: #2e665c; background: #dceee5; }
+.document-tag { color: #375f87; background: #e4edf7; }
+.resource-pessoas td.person-role-cell > .role-indicator { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 5px; }
+.resource-pessoas .role-indicator.role-yes { background: var(--income-soft); color: var(--income); }
+.resource-pessoas .role-indicator.role-no { background: #eef0ef; color: #64736c; }
+.resource-lancamentos :is(th, td).account-type-cell { text-align: center; vertical-align: middle; min-width: 56px; padding-left: 16px; padding-right: 16px; }
+.resource-lancamentos .account-type-cell .type-label { align-items: center; justify-content: center; }
+.resource-lancamentos .balance-cell .status-pago { border: 1px solid #78af89; }
+.amount-cell, .balance-cell b { color: var(--ink) !important; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .income-row td { background: var(--income-soft); }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .expense-row td { background: var(--expense-soft); }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .income-row td:first-child { border-left-color: var(--income); }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .expense-row td:first-child { border-left-color: var(--expense); }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .income-row:hover td,
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .income-row:focus-within td { background: var(--income-hover) !important; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .expense-row:hover td,
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .expense-row:focus-within td { background: var(--expense-hover) !important; }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .type-income { color: var(--income); }
+:is(.page-lancamentos, .page-dashboard, .page-caixa, .page-baixas) .type-expense { color: var(--expense); }
+.account-receive-button { background: var(--income); color: #fff; }
+.account-pay-button { background: var(--expense); color: #fff; }
+.account-receive-button:hover { background: #0f6038; }
+.account-pay-button:hover { background: #923224; }
+.settle-row-button { color: var(--accent-hover); background: #d8eee4; border-color: #aacdbb; }
+.status-pago, .status-true, .role-yes, .income-symbol, .income-settle { background: var(--income-soft); color: var(--income); }
+.status-pendente, .summary-warning { background: var(--warning-soft); color: var(--warning); }
+.status-parcial { background: var(--info-soft); color: var(--info); }
+.status-cancelado, .status-false, .expense-symbol, .expense-settle { background: var(--expense-soft); color: var(--expense); }
+.status-pago i, .status-true i { background: var(--income); }
+.row-delete { background: var(--danger-soft); color: var(--danger); }
+.row-delete:hover { background: var(--delete-hover-background); color: var(--danger); }
+
+/* Visão geral e caixa. */
+.summary-main { color: #fff; background: var(--accent-hover); border-color: var(--accent-hover); }
+.summary-main strong, .summary-main .summary-foot, .summary-main .summary-trend, .summary-main .summary-top { color: #fff; }
+.summary-main .summary-icon { color: #fff; background: #ffffff1a; }
+.summary-card:has(.icon-green) { border-top: 3px solid var(--income); }
+.summary-card:has(.icon-peach) { border-top: 3px solid var(--expense); }
+.summary-card:has(.icon-blue) { border-top: 3px solid var(--info); }
+.summary-top, .summary-foot, .summary-note { color: var(--muted); }
+.summary-card strong { color: var(--ink); }
+.summary-card.summary-main strong { color: #fff; }
+.page-dashboard :is(.bar-in, .legend-in, .progress-green) { background: var(--income); }
+.page-dashboard :is(.bar-out, .legend-out, .progress-peach) { background: var(--expense); }
+.page-dashboard .icon-green { background: var(--income-soft); color: var(--income); }
+.page-dashboard .icon-peach { background: var(--expense-soft); color: var(--expense); }
+.icon-blue { background: var(--info-soft); color: var(--info); }
+.quick-icon { background: var(--accent-soft); color: var(--accent-hover); }
+.quick-link:hover { background: #f0f8f4; }
+.quick-link b { color: var(--ink); }
+.quick-link small, .chart-y, .bar-group, .chart-legend, .dashboard-year-filter { color: var(--muted); }
+.launch-summary { background: #e6f3ed; border-color: #a7cdbf; }
+.launch-summary > span { color: var(--accent-hover); }
+
+/* Modais, formulários e feedbacks usam a mesma paleta das páginas. */
+.modal-card, .account-create-modal { background: #fff; border: 1px solid var(--panel-border); box-shadow: 0 18px 60px #103e472e; }
+.account-create-modal .modal-head h2, .account-create-modal .form-field { color: var(--ink); }
+.account-create-modal > div > .record-form > .modal-actions { background: #fff; }
+.account-new-modal .account-create-main > .form-grid > .client-search { display: block; }
+.account-new-modal .account-create-main .client-search > label { gap: 4px; }
+.account-installment-panel, .installment-value { background: #f0f8f4; border-color: var(--panel-border); }
+.account-installment-panel h3, .account-installment-panel .detail-toggle, .account-create-main .net-preview { color: var(--accent-hover); }
+.account-installment-panel .field-hint, .installment-preview caption { color: var(--muted); }
+.installment-preview th { background: #d4eadd; color: #265b4a; }
+.installment-preview td { color: var(--ink); border-color: var(--panel-border); }
+.settlement-final-value { color: var(--ink); background: var(--accent-soft); border-color: #a8cfbf; }
+.inline-error, .filter-error, .toast-error { color: var(--danger); background: var(--danger-soft); border-color: #e6bcc5; }
+.inline-success, .toast-success { color: var(--income); background: var(--income-soft); border-color: #b2d7bc; }
+.notification-popover { border-color: var(--panel-border); box-shadow: 0 8px 24px #103e471f; }
+.notification-title, .notification-item b { color: var(--ink); }
+.notification-item:hover { background: var(--accent-soft); }
+.notification-item small, .notification-caption { color: var(--muted); }
+.notification i { background: #d58a17; }
+.message-box { border-color: var(--panel-border); background: #fff; }
+.message-box h2 { color: var(--ink); }
+.selected-company td { background: var(--accent-soft); }
+.admin-company-users { background: #f0f8f4; border-color: var(--panel-border); }
+.auth-art:before, .auth-art:after { display: none; }
+.auth-card h2 { color: var(--ink); }
+.auth-card p, .auth-switch, .auth-copyright { color: var(--muted); }
+
+/* Na criação, apenas a tabela de parcelas ocupa a região rolável. */
+.account-new-modal { width: min(1120px, calc(100vw / var(--app-zoom, 1) - 40px)); min-width: 0; height: min(760px, calc(100dvh / var(--app-zoom, 1) - 40px)); max-height: calc(100dvh / var(--app-zoom, 1) - 40px); display: flex; flex-direction: column; overflow: visible; padding: 16px 18px; }
+.account-new-modal > .modal-head { flex: 0 0 auto; align-items: center; gap: 12px; padding-bottom: 12px; }
+.account-new-modal > .modal-head > div:first-child { flex: 1; margin-right: auto; min-width: 0; }
+.account-new-modal > .modal-head > .icon-button { flex: 0 0 33px; }
+.account-new-modal > .modal-head .eyebrow { display: none; }
+.account-new-modal > .modal-head h2 { margin: 0; font-size: 20px; }
+.account-new-modal > .modal-head > .company-form-field { flex: 0 1 210px; margin: 0; padding: 0; border: 0; min-width: 110px; font-size: 11px; gap: 3px; }
+.account-new-modal > .modal-head .company-form-field select { min-height: 32px; height: 32px; padding: 5px 30px 5px 8px; }
+.account-new-modal > div:not(.modal-head), .account-new-modal > div > .record-form { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.account-new-modal > div > .record-form { padding-top: 12px; }
+.account-new-modal .account-create-layout { flex: 1; min-height: 0; align-items: stretch; }
+.account-new-modal .account-create-main { min-height: 0; }
+.account-new-modal .account-create-main .form-field { margin-bottom: 10px; }
+.account-new-modal .account-installment-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 12px; }
+.account-new-modal .account-installment-panel h3 { flex-shrink: 0; margin-bottom: 8px; font-size: 15px; }
+.account-new-modal .installment-preview-wrap { flex: 1; min-height: 76px; min-width: 0; width: 100%; max-height: none; overflow: auto; margin-top: 8px; }
+.account-new-modal .installment-preview { min-width: 390px; }
+.account-new-modal .installment-preview :is(caption, th, td) { text-align: center; vertical-align: middle; }
+.account-new-modal .installment-preview :is(th, td) { padding: 5px 4px; font-size: 12px; }
+.account-new-modal .installment-preview th { z-index: 1; }
+.account-new-modal .installment-preview input { width: 100%; min-width: 0; height: 32px; text-align: center; padding: 3px 5px; font-size: 12px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--ink); background: #fff; }
+.account-new-modal .installment-preview input[type=date] { min-width: 125px; }
+.account-new-modal .installment-preview input[type=number] { min-width: 80px; max-width: 120px; }
+.account-new-modal .installment-total { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; flex-shrink: 0; font-size: 12px; color: var(--ink); }
+.account-new-modal .installment-amount-fields .operation-value-field { color: var(--accent-hover); }
+.account-new-modal .installment-amount-fields .operation-value-field input { background: var(--accent-soft); border-color: var(--accent); }
+.account-new-modal .installment-total { background: var(--accent-soft); color: var(--accent-hover); font-weight: 700; padding-left: 6px; padding-right: 6px; padding-bottom: 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--control-border); }
+.account-new-modal .account-installment-panel .detail-toggle { margin: 0; font-size: 11px; }
+.account-new-modal .installment-schedule-controls { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-shrink: 0; }
+.account-new-modal .installment-interval-input { width: 40%; min-width: 0; height: 32px; padding: 4px 6px; border: 1px solid var(--control-border); border-radius: 6px; font-size: 12px; }
+.account-new-modal .detail-installments { flex-shrink: 0; margin-top: 5px; }
+.account-new-modal .detail-installments small { display: none; }
+.account-new-modal .account-installment-panel > :not(.installment-preview-wrap) { flex-shrink: 0; }
+.account-new-modal > div > .record-form > .modal-actions { position: static; flex: 0 0 auto; padding: 10px 0 0; margin-top: 10px; }
+.account-new-modal .combobox { position: relative; }
+.account-new-modal .combobox-results { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-height: 160px; box-shadow: 0 6px 16px #103e471a; }
+
+@media (min-width: 901px) {
+    .account-new-modal .account-create-main > .form-grid { height: 100%; grid-template-rows: repeat(4, max-content) minmax(0, 1fr); }
+    .account-new-modal .account-create-main > .form-grid:has(input[aria-label="Tipo"]) { grid-template-rows: repeat(5, max-content) minmax(0, 1fr); }
+    .account-new-modal .account-create-main > .form-grid > .form-field:has(textarea) { align-items: stretch; margin-bottom: 0; }
+    .account-new-modal .account-create-main .form-field textarea { height: 100%; min-height: 0; resize: none; }
+}
+
+@media (max-width: 900px) {
+    .account-new-modal { width: calc(100vw / var(--app-zoom, 1) - 16px); height: min(760px, calc(100dvh / var(--app-zoom, 1) - 16px)); max-height: calc(100dvh / var(--app-zoom, 1) - 16px); padding: 12px; }
+    .account-new-modal .account-create-layout { display: flex; flex-direction: column; gap: 8px; }
+    .account-new-modal .account-create-main { flex: 0 0 auto; }
+    .account-new-modal .account-installment-panel { flex: 1; height: auto; padding: 8px; }
+    .account-new-modal .account-create-main > .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; }
+    .account-new-modal .account-create-main > .form-grid > .full-field { grid-column: 1 / -1; }
+    .account-new-modal .account-create-main .form-field { margin-bottom: 4px; font-size: 11px; gap: 2px; }
+    .account-new-modal .account-create-main .form-field :is(input:not([type=radio]):not([type=checkbox]), select),
+    .account-new-modal .account-create-main .combobox .combobox-control input { height: 32px; }
+    .account-new-modal .account-create-main .client-search > label,
+    .account-new-modal .account-create-main > .form-grid > .form-field.full-field,
+    .account-new-modal .account-reference-fields > .form-field { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+    .account-new-modal .account-reference-fields { grid-template-columns: minmax(0, 1fr) minmax(80px, .45fr); gap: 8px; }
+    .account-new-modal .account-create-main .form-field textarea { height: 32px; min-height: 32px; }
+    .account-new-modal .account-create-main .combobox-toggle { width: 32px; }
+    .account-new-modal .account-create-main .combobox-control input { padding-left: 8px; padding-right: 62px; }
+    .account-new-modal .account-create-main .combobox-clear { right: 34px; }
+    .account-new-modal > .modal-head { gap: 8px; padding-bottom: 8px; }
+    .account-new-modal > .modal-head h2 { font-size: 17px; }
+    .account-new-modal > .modal-head > .company-form-field { flex-basis: 135px; }
+    .account-new-modal .account-installment-panel h3 { display: none; }
+    .account-new-modal .account-installment-panel .value-mode { margin-bottom: 6px; gap: 4px 10px; font-size: 11px; }
+    .account-new-modal .installment-amount-fields .form-field { font-size: 11px; gap: 2px; }
+    .account-new-modal .installment-amount-fields input { height: 32px; }
+    .account-new-modal > div > .record-form { padding-top: 8px; }
+    .account-new-modal > div > .record-form > .modal-actions { flex-wrap: nowrap; gap: 6px; margin-top: 8px; padding-top: 8px; }
+    .account-new-modal > div > .record-form > .modal-actions .button { padding: 0 8px; height: 36px; font-size: 11px; gap: 4px; }
+}
+
+@media (max-width: 900px) and (max-height: 760px) {
+    .account-new-modal .account-create-main .form-field { margin-bottom: 2px; }
+    .account-new-modal .account-create-main > .form-grid > .form-field.full-field:not(.client-search),
+    .account-new-modal .account-create-main .client-search > label { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 4px; }
+    .account-new-modal .account-create-main .form-field :is(input:not([type=radio]):not([type=checkbox]), select),
+    .account-new-modal .account-create-main .combobox .combobox-control input { height: 28px; min-height: 28px; }
+    .account-new-modal .account-create-main .form-field textarea { height: 28px; min-height: 28px; }
+    .account-new-modal .account-installment-panel .value-mode { margin-bottom: 4px; }
+    .account-new-modal .account-create-layout { gap: 6px; }
+    .account-new-modal > div > .record-form { padding-top: 6px; }
+    .account-new-modal > div > .record-form > .modal-actions { margin-top: 4px; padding-top: 6px; }
+    .account-new-modal > div > .record-form > .modal-actions .button { height: 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

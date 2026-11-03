@@ -198,7 +198,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
             {messageBox}
             <header className="admin-header">
                 <div>
-                    <h1>Painel Administrativo</h1>
+                    <h1><Icon name="users" size={25} />Painel Administrativo</h1>
                     <p>Gerencie usuários, empresas e licenças.</p>
                 </div>
                 <div>

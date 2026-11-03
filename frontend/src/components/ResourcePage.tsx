@@ -18,6 +18,15 @@ type Filters = {
     tipo: "todos" | "pagar" | "receber";
 };
 type DateFilters = Pick<Filters, "dataInicial" | "dataFinal" | "formaPagamento"> & { mostrarRecebimentos: boolean; mostrarPagamentos: boolean };
+
+function formatDocument(value: Row[string]) {
+    const text = String(value ?? "");
+    if (!/^[\d.\-/\s]+$/.test(text)) return text || "—";
+    const digits = text.replace(/\D/g, "");
+    if (digits.length === 11) return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+    if (digits.length === 14) return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+    return text;
+}
 type Props = {
     resource: Resource;
     meta: ListMeta;
@@ -83,6 +92,10 @@ export function ResourcePage({
     const sortable = ["lancamentos", "baixas"].includes(resource.key);
     const columnClass = (key: string) => [
         key === "numero" ? "account-number" : "",
+        showSettlement && key === "descricao" ? "account-description-cell" : "",
+        resource.key === "pessoas" && key === "endereco" ? "person-address-cell" : "",
+        resource.key === "pessoas" && key === "responsavel_nome" ? "person-contact-cell" : "",
+        resource.key === "pessoas" && ["documento", "responsavel_cpf"].includes(key) ? "person-document-cell" : "",
         ["numero", "empresa_identificador", "num_doc", "tipo", "natureza", "competencia", "documento", "celular", "responsavel_cpf", "valor", "saldo", "status", "cliente", "fornecedor"].includes(key) || key.startsWith("data_") ? "nowrap-cell" : "",
         ["nome", "descricao", "razao_social", "endereco", "pessoa_id", "observacoes"].includes(key) ? "text-cell" : "",
         resource.key === "pessoas" && ["cliente", "fornecedor"].includes(key) ? "person-role-cell" : "",
@@ -102,7 +115,7 @@ export function ResourcePage({
                     <button className="button account-receive-button" onClick={() => onCreate("receber")}><Icon name="arrowDown" size={18} /> Receber</button>
                     <button className="button account-pay-button" onClick={() => onCreate("pagar")}><Icon name="arrowUp" size={18} /> Pagar</button>
                 </div> : <button className="button button-primary" onClick={() => onCreate()}>
-                    <Icon name="plus" size={18} /> {showSettlement || resource.key === "baixas" ? "Nova" : "Novo"} {resource.singular}
+                    <Icon name="plus" size={18} /> {showSettlement || resource.key === "baixas" || resource.key === "pessoas" ? "Nova" : "Novo"} {resource.singular}
                 </button>}
             </div>
             <section className="panel list-panel">
@@ -235,7 +248,7 @@ export function ResourcePage({
                                                 : "expense-row"
                                             : resource.key === "baixas"
                                               ? row.origem === "recebimentos" ? "income-row" : "expense-row"
-                                              : ""
+                                              : resource.key === "formas" && row.ativo === false ? "inactive-payment-form" : ""
                                     }
                                     key={String(row.empresa_id) + String(row.origem || "") + String(row.id || index)}
                                     tabIndex={0}
@@ -248,16 +261,17 @@ export function ResourcePage({
                                     {columns.map(([key]) => (
                                         <td key={key} className={columnClass(key)}>
                                             {key === "descricao" && showSettlement ? (
-                                                <>
-                                                    <b>{formatValue(key, row[key])}</b>
+                                                <div className="account-description">
+                                                    <span className="account-description-text" title={formatValue(key, row[key])}>{formatValue(key, row[key])}</span>
                                                     {Number(row.total_parcelas) > 1 && (
                                                         <small className="installment-tag">
                                                             Parcela {row.numero_parcela}/{row.total_parcelas}
                                                         </small>
                                                     )}
-                                                </>
+                                                    {row.num_doc && <small className="installment-tag document-tag" title={`Num DOC: ${row.num_doc}`}>Doc {row.num_doc}</small>}
+                                                </div>
                                             ) : key === "saldo" && showSettlement ? (
-                                                <div className="balance-cell"><b>{formatValue(key, row[key])}</b>
+                                                <div className="balance-cell">{row.status === "pago" ? <Status value={row.status} /> : <b>{formatValue(key, row[key])}</b>}
                                                     <small>{row.data_ultima_baixa ? (row.status === "pago" ? "Quitação: " : "Última baixa: ") + formatValue("data_ultima_baixa", row.data_ultima_baixa) : "Sem pagamento"}</small>
                                                 </div>
                                             ) : key === "pessoa_id" && row.pessoa_nome ? (<span>{row.pessoa_nome}</span>
@@ -265,6 +279,8 @@ export function ResourcePage({
                                             ) : key === "banco_id" && row.banco_descricao ? (<span>{row.banco_descricao}</span>
                                             ) : key === "forma_pagamento_id" && row.forma_pagamento_descricao ? (
                                                 <span>{row.forma_pagamento_descricao}</span>
+                                            ) : resource.key === "pessoas" && ["documento", "responsavel_cpf"].includes(key) ? (
+                                                <span title={formatDocument(row[key])}>{formatDocument(row[key])}</span>
                                             ) : key === "observacoes" ? (
                                                 <span className="notes-preview" title={String(row.observacoes || "")}>{formatValue(key, row[key])}</span>
                                             ) : resource.key === "pessoas" && (key === "cliente" || key === "fornecedor") ? (
@@ -277,11 +293,14 @@ export function ResourcePage({
                                               (row.tipo === "pagar" || row.tipo === "receber") ? (
                                                 <span
                                                     className={`type-label ${row.tipo === "receber" ? "type-income" : "type-expense"}`}
+                                                    role={showSettlement ? "img" : undefined}
+                                                    aria-label={showSettlement ? row.tipo === "receber" ? "A receber" : "A pagar" : undefined}
+                                                    title={showSettlement ? row.tipo === "receber" ? "A receber" : "A pagar" : undefined}
                                                 >
-                                                    {formatValue(key, row[key])}
+                                                    {showSettlement ? <Icon name={row.tipo === "receber" ? "arrowDown" : "arrowUp"} size={18} /> : formatValue(key, row[key])}
                                                 </span>
                                             ) : (
-                                                <span className={key === "valor" ? "amount-cell" + (showSettlement ? " account-total" : "") : ""}>
+                                                <span title={resource.key === "pessoas" ? formatValue(key, row[key]) : undefined} className={key === "valor" ? "amount-cell" + (showSettlement ? " account-total" : "") : ""}>
                                                     {formatValue(key, showSettlement && key === "valor" ? netAmount(row) : row[key])}
                                                 </span>
                                             )}
@@ -334,7 +353,7 @@ export function ResourcePage({
                                         ? "Tente ajustar os filtros ou buscar por outro termo."
                                         : "Adicione seu primeiro registro para manter tudo organizado."
                                 }
-                                action={hasFilters ? undefined : `${showSettlement || resource.key === "baixas" ? "Nova" : "Novo"} ${resource.singular}`}
+                                action={hasFilters ? undefined : `${showSettlement || resource.key === "baixas" || resource.key === "pessoas" ? "Nova" : "Novo"} ${resource.singular}`}
                                 onAction={onCreate}
                             />
                         )

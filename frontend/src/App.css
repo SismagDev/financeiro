@@ -2871,7 +2871,8 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .launch-filters { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
 .launch-filters-fields.inline-filters { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, .8fr) repeat(2, minmax(120px, 1fr)); gap: var(--filter-gap); }
 .launch-filters-fields.inline-filters > label { margin: 0; }
-.launch-filters > .filter-toggles { margin-top: 14px; }
+.launch-filters > .filter-toggles { margin-top: 8px; }
+.launch-filters > .filter-toggles .paid-filter { margin: 0; padding-top: 0; }
 .people-role-filters { margin-top: var(--people-role-gap); }
 .people-role-filters .paid-filter { padding: 6px 0; min-height: 32px; }
 .resource-pessoas .person-role-cell { text-align: center; vertical-align: middle; }
@@ -2905,8 +2906,9 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .recent-panel th:first-child, .recent-panel td:first-child { padding-left: var(--recent-table-padding); }
 .recent-panel th:last-child, .recent-panel td:last-child { padding-right: var(--recent-table-padding); }
 .cash-list-panel { margin-top: var(--cash-list-gap); }
-.settlement-type-filters { margin-top: 14px; }
-.settlement-type-filters .paid-filter { margin: 0; white-space: nowrap; }
+.page-baixas .settlement-filter-group { margin-bottom: 8px; }
+.settlement-type-filters { margin-top: 8px; }
+.settlement-type-filters .paid-filter { margin: 0; padding-top: 0; white-space: nowrap; }
 .clear-settlement-search { height: 42px; margin-left: auto; }
 .resource-table tbody tr:focus-within, .resource-table tbody tr:focus-within td { background: #edf4ef; }
 
@@ -3110,4 +3112,45 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
     .account-create-modal .company-form-field { margin-bottom: 8px; padding-bottom: 8px; }
     .account-create-modal > div > .record-form > .modal-actions { bottom: -12px; padding: 8px 0; }
     .installment-preview-wrap { max-height: 230px; }
+}
+
+/* Filtro compartilhado na topbar e listas com rolagem interna. */
+body:has(.bounded-list-area), #root:has(.bounded-list-area) { min-height: calc(100dvh / var(--app-zoom, 1)); }
+.topbar-actions .company-filter { flex-direction: row; align-items: center; gap: 8px; min-width: 0; max-width: 260px; }
+.topbar-actions .company-select-control { min-width: 0; }
+.topbar-actions .company-filter select { min-height: 34px; max-width: 200px; padding-top: 6px; padding-bottom: 6px; text-overflow: ellipsis; }
+.bounded-list-area { height: calc(100dvh / var(--app-zoom, 1)); display: flex; flex-direction: column; overflow: hidden; }
+.bounded-list-area > .topbar { flex: 0 0 auto; }
+.bounded-list-area > .page-content { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; padding-bottom: 16px; }
+.bounded-list-area .list-heading { flex: 0 0 auto; margin-bottom: 12px; }
+.bounded-list-area .list-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.bounded-list-area .list-panel > :not(.table-wrap) { flex-shrink: 0; }
+.bounded-list-area .table-wrap { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.bounded-list-area .table-wrap thead th { position: sticky; top: 0; z-index: 1; background: #fff; }
+.bounded-list-area .pagination { margin-top: 0; }
+.bounded-list-area .resource-table td { height: 40px; padding-top: 6px; padding-bottom: 6px; white-space: nowrap; overflow-wrap: normal; }
+.bounded-list-area :is(.resource-planos, .resource-bancos) td > span { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.resource-pessoas td { white-space: nowrap; overflow-wrap: normal; }
+.resource-pessoas td > span { display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.resource-pessoas td.person-address-cell, .resource-pessoas th.person-address-cell { display: table-cell; }
+.resource-pessoas td.person-address-cell { max-width: none; white-space: nowrap; }
+.resource-pessoas td.person-address-cell > span { max-width: none; overflow: visible; }
+.resource-pessoas td.person-document-cell { width: 1%; white-space: nowrap; overflow-wrap: normal; }
+.resource-pessoas td.person-document-cell > span { max-width: 180px; }
+.resource-pessoas td.person-contact-cell > span { max-width: 160px; }
+.resource-formas .inactive-payment-form td { background: #f1f2f2; }
+.bounded-list-area .resource-formas td > span { display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.resource-lancamentos td.account-description-cell { min-width: 240px; width: 260px; max-width: 260px; }
+.account-description { display: flex; align-items: center; gap: 6px; width: 260px; white-space: normal; }
+.account-description-text { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.account-description .installment-tag { flex-shrink: 0; margin-left: 0; white-space: nowrap; }
+.account-description .document-tag { max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.resource-lancamentos .type-label { display: inline-flex; vertical-align: middle; }
+.resource-lancamentos .balance-cell .status-pill { justify-self: start; }
+@media (max-width: 640px) {
+    .topbar-actions { min-width: 0; max-width: 100%; }
+    .topbar-actions .company-filter { flex: 0 1 auto; font-size: 0; gap: 0; }
+    .topbar-actions .company-filter select { width: 145px; max-width: 100%; font-size: 12px; }
+    .notification-anchor { position: static; }
+    .notification-popover { top: calc(100% + 6px); right: 12px; width: min(360px, calc(100vw / var(--app-zoom, 1) - 24px)); }
 }

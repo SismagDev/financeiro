@@ -553,6 +553,20 @@ function App() {
         setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
     }
 
+    async function openNotifiedAccount(row: Row) {
+        setNotificationsOpen(false);
+        const version = ++formVersion.current;
+        try {
+            const result = await api(`/lancamentos/${row.id}`, {}, String(row.empresa_id));
+            if (version !== formVersion.current) return;
+            navigate("lancamentos");
+            setSelectedRow(result.data);
+            setModal("edit");
+        } catch (error) {
+            if (version === formVersion.current) notify(error instanceof Error ? error.message : "Não foi possível localizar a conta.", "error");
+        }
+    }
+
     async function confirmSettlementExtra(accountId: string, empresaId: string, value: number, previousValue = 0): Promise<Row | null> {
         const version = formVersion.current;
         const result = await api(`/lancamentos/${accountId}`, {}, empresaId);
@@ -799,7 +813,7 @@ function App() {
         { key: "formas", title: "Formas de pagamento", icon: "card", section: "CADASTROS" },
         { key: "bancos", title: "Bancos", icon: "bank", section: "CADASTROS" },
         { key: "planos", title: "Planos de contas", icon: "grid", section: "CADASTROS" },
-        { key: "baixas", title: "Baixas", icon: "arrows", section: "FINANCEIRO" },
+        { key: "baixas", title: "Baixas", icon: "check", section: "FINANCEIRO" },
     ];
     const grouped = ["WORKSPACE", "FINANCEIRO", "CADASTROS"];
     const visibleRows = summary?.scope === dashboardScopeKey ? summary.rows : EMPTY_ROWS;
@@ -944,7 +958,7 @@ function App() {
                         aria-label="Fechar navegação"
                     />
                 )}
-                <main className="main-area" inert={Boolean(modal)}>
+                <main className={`main-area ${["pessoas", "planos", "bancos", "formas"].includes(page) ? "bounded-list-area" : ""}`} inert={Boolean(modal)}>
                     <header className="topbar">
                         <div className="topbar-left">
                             <button
@@ -962,6 +976,7 @@ function App() {
                             </div>
                         </div>
                         <div className="topbar-actions">
+                            {companyFilterControl}
                             <div className="zoom-controls" role="group" aria-label="Zoom da interface">
                                 <button type="button" aria-label="Diminuir zoom" title="Diminuir zoom" disabled={zoom <= 80} onClick={() => setZoom(value => Math.max(80, value - 10))}>−</button>
                                 <output aria-live="polite">{zoom}%</output>
@@ -1004,11 +1019,8 @@ function App() {
                                                 {overdueRows.slice(0, 5).map((item) => (
                                                     <button
                                                         className="notification-item"
-                                                        key={String(item.id)}
-                                                        onClick={() => {
-                                                            navigate("lancamentos");
-                                                            setNotificationsOpen(false);
-                                                        }}
+                                                        key={String(item.empresa_id) + ":" + String(item.id)}
+                                                        onClick={() => void openNotifiedAccount(item)}
                                                     >
                                                         <span
                                                             className={`notification-symbol ${item.tipo === "receber" ? "income-symbol" : "expense-symbol"}`}
@@ -1066,7 +1078,6 @@ function App() {
                                 year={dashboardYear}
                                 onYearChange={setDashboardYear}
                                 user={user}
-                                companyFilter={companyFilterControl}
                                 rows={visibleRows}
                                 flowRows={flowRows}
                                 cashIn={cashIn}
@@ -1083,7 +1094,6 @@ function App() {
                         ) : page === "caixa" ? (
                             <CashPage
                                 key={selectedCompanyIds.join(",") + ":" + companyFilter}
-                                companyFilter={companyFilterControl}
                                 rows={cashRows as never}
                                 initial={cashInitial}
                                 meta={listMeta}
@@ -1101,7 +1111,6 @@ function App() {
                                 onSort={key => setSorting({ page, key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
                                 onPageChange={next => setPagination({ key: filterKey, page: next })}
                                 loadOptions={loadFilterOptions}
-                                companyFilter={companyFilterControl}
                                 visibleRows={filteredRows}
                                 loading={Boolean(scopeKey) && (loading || (!loadError && listResult?.key !== filterKey))}
                                 search={search}
@@ -1175,7 +1184,7 @@ function App() {
                                               : modal === "edit"
                                                 ? `Editar ${resource?.singular}${resource?.key === "lancamentos" && currentAccount?.numero ? " nº " + currentAccount.numero : ""}`
                                                 : resource?.key === "lancamentos" ? `Nova Conta${createAccountType === "receber" ? " a Receber" : createAccountType === "pagar" ? " a Pagar" : ""}`
-                                                : `${resource?.key === "baixas" ? "Nova" : "Novo"} ${resource?.singular}`}
+                                                : `${resource?.key === "baixas" || resource?.key === "pessoas" ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
                                 <button className="icon-button" onClick={() => setModal(null)}>

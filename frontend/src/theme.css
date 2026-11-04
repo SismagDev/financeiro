@@ -293,3 +293,68 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Edição reutiliza a estrutura compacta da criação, com baixas no painel lateral. */
+.account-new-modal.account-edit-modal > .account-edit-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; align-items: stretch; }
+.account-edit-modal .account-edit-layout > .record-form { display: flex; flex-direction: column; min-height: 0; }
+.account-edit-modal .account-create-main { flex: 1; }
+.account-edit-modal .account-create-main > .form-grid { grid-template-rows: repeat(5, max-content) minmax(0, 1fr); }
+.account-edit-modal .account-create-main .liquid-value-editor { display: block; }
+.account-edit-modal .account-create-main .client-search > label { display: flex; flex-direction: column; align-items: stretch; }
+.account-edit-modal .account-edit-layout > .account-settlements { display: flex; flex-direction: column; min-height: 0; max-height: none; overflow: visible; margin: 12px 0 0; padding: 12px; background: #f0f8f4; border-color: var(--panel-border); }
+.account-edit-modal .settlement-heading { flex-shrink: 0; gap: 8px; }
+.account-edit-modal .settlement-heading h3 { margin-top: 0; }
+.account-edit-modal .settlement-list { flex: 1; min-height: 70px; overflow: auto; }
+.account-edit-modal .settlement-table { min-width: 440px; }
+.account-edit-modal .account-settlements > .pagination { flex-shrink: 0; }
+.settlement-modal { overflow: visible; width: min(510px, calc(100vw / var(--app-zoom, 1) - 24px)); max-height: none; padding: 16px; }
+.settlement-modal .modal-head { padding-bottom: 10px; align-items: center; }
+.settlement-modal .modal-head h2 { margin-top: 0; }
+.settlement-form { padding-top: 10px; }
+.settlement-form .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+.settlement-form .form-field { margin-bottom: 10px; }
+.settlement-form .settle-summary { margin-bottom: 10px; padding: 10px; overflow-wrap: anywhere; }
+.settlement-form .settle-summary > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settlement-form .modal-actions { margin-top: 0; padding-top: 10px; }
+@media (max-width: 900px) {
+    .account-new-modal.account-edit-modal > .account-edit-layout { display: flex; flex-direction: column; gap: 6px; }
+    .account-edit-modal .account-edit-layout > .record-form { flex: 0 0 auto; }
+    .account-edit-modal .account-create-main > .form-grid { grid-template-rows: none; }
+    .account-edit-modal .account-edit-layout > .account-settlements { flex: 1; margin-top: 0; padding: 8px; }
+    .account-edit-modal .settlement-heading h3 { font-size: 13px; }
+    .account-edit-modal .settlement-heading p { margin: 4px 0; font-size: 11px; }
+    .account-edit-modal .settlement-heading .button { height: 30px; padding: 0 8px; font-size: 11px; }
+    .account-edit-modal .settlement-list { min-height: 50px; }
+    .account-edit-modal .account-settlements > p { margin: 6px 0; font-size: 11px; }
+    .account-edit-modal .pagination { padding-top: 6px; margin-top: 6px; gap: 3px; font-size: 10px; }
+    .account-edit-modal .pagination .button { height: 28px; min-height: 28px; padding: 0 6px; font-size: 10px; }
+    .settlement-modal .form-field { font-size: 11px; gap: 3px; }
+    .settlement-modal .form-field :is(input, select) { height: 34px; min-height: 34px; }
+    .settlement-modal .modal-actions { gap: 6px; }
+    .settlement-modal .modal-actions .button { height: 34px; padding: 0 9px; font-size: 11px; }
+}
+@media (max-width: 760px) {
+    .account-edit-modal .account-create-main .client-search > label { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 4px; }
+}
+@media (max-height: 600px) {
+    .settlement-modal { padding: 10px 12px; }
+    .settlement-modal .modal-head { padding-bottom: 5px; }
+    .settlement-modal .modal-head h2 { font-size: 17px; }
+    .settlement-modal .eyebrow { display: none; }
+    .settlement-form { padding-top: 6px; }
+    .settlement-form .settle-summary { padding: 6px 8px; gap: 2px; margin-bottom: 5px; }
+    .settlement-form .form-field { margin-bottom: 3px; gap: 2px; font-size: 11px; line-height: 1.2; }
+    .settlement-form .form-field :is(input, select), .settlement-form .combobox-control input { height: 28px; min-height: 28px; }
+    .settlement-form .combobox { margin-top: 0; }
+    .settlement-form .modal-actions { padding-top: 5px; }
+    .settlement-modal .modal-actions .button { height: 28px; min-height: 28px; }
+}
+@media (max-height: 560px) {
+    /* Em janelas baixas, a edição mantém todos os dados acessíveis. */
+    .account-new-modal.account-edit-modal { height: auto; overflow: auto; }
+    .account-new-modal.account-edit-modal > .account-edit-layout { flex: none; }
+    .account-edit-modal .account-edit-layout > .record-form, .account-edit-modal .account-create-main { flex: none; }
+    .account-edit-modal .account-create-main > .form-grid { height: auto; grid-template-rows: none; }
+    .account-edit-modal .account-create-main .form-field textarea { height: 40px; min-height: 40px; }
+    .account-edit-modal .account-edit-layout > .account-settlements { flex: none; height: 240px; }
+}

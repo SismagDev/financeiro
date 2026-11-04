@@ -13,11 +13,20 @@ export function AccountValueSummary({ account }: { account: Row }) {
     </dl>;
 }
 
-export function AccountValueInput({ account, label = "Valor original", onChange }: { account: Row | null; label?: string; onChange?: (values: Row) => void }) {
+export function AccountValueInput({ account, label = "Valor original", onChange, liquidOnly = false }: { account: Row | null; label?: string; onChange?: (values: Row) => void; liquidOnly?: boolean }) {
     const [value, setValue] = useState(String(account?.valor ?? ""));
     const [adjustments, setAdjustments] = useState({ desconto: Number(account?.desconto || 0), acrescimo: Number(account?.acrescimo || 0) });
     const [kind, setKind] = useState<"desconto" | "acrescimo">("desconto");
     const net = netAmount({ valor: value, ...adjustments });
+    if (liquidOnly) return <div className="account-value-editor liquid-value-editor">
+        <label className="form-field">Valor líquido
+            <input type="number" min={Math.max(0, (Math.round((adjustments.acrescimo - adjustments.desconto) * 100) + 1) / 100)} step="0.01" required
+                defaultValue={net.toFixed(2)} onChange={event => setValue(event.target.value === "" ? "" : String(netAmount({ valor: event.target.value, desconto: adjustments.acrescimo, acrescimo: adjustments.desconto })))} />
+        </label>
+        <input type="hidden" name="valor" value={value} />
+        <input type="hidden" name="desconto" value={adjustments.desconto} />
+        <input type="hidden" name="acrescimo" value={adjustments.acrescimo} />
+    </div>;
     return <div className="account-value-editor full-field">
         <label className="form-field">{label}
             <input name="valor" type="number" step="0.01" min="0.01" required value={value} placeholder="0,00" onChange={event => { setValue(event.target.value); onChange?.({ valor: event.target.value, ...adjustments }); }} />

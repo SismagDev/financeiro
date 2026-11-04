@@ -1157,7 +1157,7 @@ function App() {
                             if (event.target === event.currentTarget) setModal(null);
                         }}
                     >
-                        <section className={`modal-card ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? "account-create-modal account-edit-modal" : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? "account-new-modal account-edit-modal" : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1282,7 +1282,7 @@ function App() {
                                     </div>
                                 </form>
                                 {modal === "edit" && resource?.key === "lancamentos" && currentAccount &&
-                                    <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                    <AccountSettlements compact reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />}
                                 </div>
                             )}
@@ -1293,7 +1293,7 @@ function App() {
                 {settlementOverlay && currentAccount && <div className="modal-backdrop settlement-overlay" onMouseDown={event => {
                     if (event.target === event.currentTarget && !busy) setSettlementOverlay(false);
                 }}>
-                    <section className="modal-card" role="dialog" aria-modal="true" aria-label="Registrar baixa">
+                    <section className="modal-card settlement-modal" role="dialog" aria-modal="true" aria-label="Registrar baixa">
                         <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
                             <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
                         </div>

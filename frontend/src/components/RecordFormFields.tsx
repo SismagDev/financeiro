@@ -60,14 +60,14 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
         setInstallmentEdits({});
         change();
     }
-    const orderedFields = isLancamento ? [...fields.filter(field => field.name === "plano_conta_id"), ...fields.filter(field => field.name !== "plano_conta_id")] : fields;
+    const orderedFields = launch ? [...fields.filter(field => field.name === "plano_conta_id"), ...fields.filter(field => field.name !== "plano_conta_id")] : fields;
     const formFields = <div className="form-grid">{orderedFields.filter((field) => !(launch && field.name === "parcelas") && !(field.type === "checkbox" && field.name === "fornecedor") && !(launch && field.name === "banco_id")).map((field) => {
         if (isLancamento && fixedType && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={fixedType} />;
         if (launch && field.name === "num_doc") return null;
         if (field.type === "checkbox") return <PersonRoles key={field.name} selectedRow={selectedRow} />;
             if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name + companyId} selectedRow={selectedRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} loadOptions={loadOptions} />;
         if (isLancamento && field.name === "valor") return null;
-        if (launch && field.name === "valor") return <AccountValueInput key={field.name} account={selectedRow} />;
+        if (launch && field.name === "valor") return <AccountValueInput key={field.name} account={selectedRow} liquidOnly />;
         const formField = <label key={field.name} className={`form-field ${field.wide || (isLancamento && field.name === "tipo") ? "full-field" : ""}`}>{field.name === "valor" && isLancamento ? mode === "total" ? "Valor total da operação" : "Valor de cada parcela" : field.label}
             {isLancamento && field.name === "tipo" ? <Combobox name="tipo" label="Tipo" required options={field.options || []} value={accountType} onChange={type => {
                 setAccountType(type);

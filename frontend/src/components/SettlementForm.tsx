@@ -11,13 +11,15 @@ type Props = {
 };
 export function SettlementForm({ account, paymentForms, remaining, busy, formatValue, onSubmit, onCancel, loadOptions }: Props) {
     const [base, setBase] = useState(remaining.toFixed(2));
-    const [discount, setDiscount] = useState("0");
-    const [surcharge, setSurcharge] = useState("0");
+    const [modifier, setModifier] = useState("none");
+    const [modifierValue, setModifierValue] = useState("0");
+    const discount = modifier === "desconto" ? modifierValue : "0";
+    const surcharge = modifier === "acrescimo" ? modifierValue : "0";
     const finalValue = liquidSettlementValue(Number(base), Number(discount), Number(surcharge));
     const invalid = Number(base) <= 0 || Number(base) > remaining || Number(discount) > Number(base) || finalValue <= 0;
-    return <form onSubmit={onSubmit} className="record-form">
+    return <form onSubmit={onSubmit} className="record-form settlement-form">
         <div className={"settle-summary " + (account.tipo === "receber" ? "income-settle" : "expense-settle")}>
-            <span>{account.tipo === "receber" ? "Recebimento" : "Pagamento"} · {String(account.descricao)}</span>
+            <span title={String(account.descricao)}>{account.tipo === "receber" ? "Recebimento" : "Pagamento"} · {String(account.descricao)}</span>
             <b>Saldo em aberto: {formatValue("valor", remaining)}</b>
         </div>
         <div className="form-grid">
@@ -33,20 +35,18 @@ export function SettlementForm({ account, paymentForms, remaining, busy, formatV
             <label className="form-field">Data
                 <input name="data" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
             </label>
-            <label className="form-field">Desconto
-                <input name="desconto" type="number" min="0" max={Number(base)} step="0.01" required value={discount} onChange={event => setDiscount(event.target.value)} />
+            <label className="form-field">Modificador
+                <select aria-label="Modificador" value={modifier} onChange={event => { setModifier(event.target.value); setModifierValue("0"); }}>
+                    <option value="none">Sem ajuste</option><option value="desconto">Desconto</option><option value="acrescimo">Acréscimo</option>
+                </select>
             </label>
-            <label className="form-field">Acréscimo
-                <input name="acrescimo" type="number" min="0" step="0.01" required value={surcharge} onChange={event => setSurcharge(event.target.value)} />
+            <label className="form-field">Valor do modificador
+                <input type="number" min="0" max={modifier === "desconto" ? Number(base) : undefined} step="0.01" required disabled={modifier === "none"} value={modifierValue} onChange={event => setModifierValue(event.target.value)} />
             </label>
         </div>
         <input name="valor" type="hidden" value={finalValue.toFixed(2)} />
-        <div className="settlement-final-value" role="status">
-            <span>Valor efetivo a {account.tipo === "receber" ? "receber" : "pagar"}</span><b>{formatValue("valor", finalValue)}</b>
-            <small>{formatValue("valor", Number(base))} − {formatValue("valor", Number(discount))} + {formatValue("valor", Number(surcharge))}</small>
-            <small>Saldo após a baixa: {formatValue("valor", Math.max(0, remaining - Number(base)))}</small>
-        </div>
-        <p className="settle-hint">Para uma baixa parcial, informe apenas a parte do saldo que deseja quitar. Os ajustes se aplicam somente a esta baixa.</p>
+        <input name="desconto" type="hidden" value={discount} />
+        <input name="acrescimo" type="hidden" value={surcharge} />
         {invalid && <p className="field-hint" role="alert">Informe uma parte válida do saldo, desconto até esse valor e valor efetivo maior que zero.</p>}
         <div className="modal-actions">
             <button type="button" className="button button-quiet" disabled={busy} onClick={onCancel}>Cancelar</button>

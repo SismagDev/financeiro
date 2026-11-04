@@ -12,7 +12,7 @@ import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resou
 import type { Company, ListMeta, OptionLoader, Row, User } from "./types";
 import "./App.css";
 import "./theme.css";
-import { competenceDate, competenceLabel, savedDashboardYear } from "./utils/dates";
+import { competenceDate, competenceLabel, localDateInputValue, savedDashboardYear } from "./utils/dates";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const EMPTY_ROWS: Row[] = [];
@@ -500,6 +500,8 @@ function App() {
     }, []);
     const loadFormOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, formCompanyId ? [formCompanyId] : [], formVersion.current), [fetchOptions, formCompanyId]);
     const loadFilterOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, scopeKey ? scopeKey.split(",") : [], formVersion.current), [fetchOptions, scopeKey]);
+    const loadQuickSettlementOptions = useCallback((row: Row): OptionLoader => (source, query, nextPage) =>
+        fetchOptions(source, query, nextPage, [String(row.empresa_id)], formVersion.current), [fetchOptions]);
     const detailAccountId = selectedRow?.id, detailCompanyId = selectedRow?.empresa_id, detailType = selectedRow?.tipo;
     const loadAccountSettlements = useCallback(async (filters: { dataInicial: string; dataFinal: string; formaPagamento: string }, nextPage: number) => {
         if (!detailAccountId) return { data: EMPTY_ROWS, meta: { total: 0, pagina: 1, paginas: 1 } };
@@ -700,6 +702,25 @@ function App() {
     }
 
 
+    async function registerLaunchSettlement(account: Row, values: { forma_pagamento_id: string; valor: number; data: string; desconto: number; acrescimo: number }) {
+        await api(`/lancamentos/${account.id}/baixar`, { method: "POST", body: JSON.stringify(values) }, String(account.empresa_id));
+        await reloadCurrent();
+    }
+
+    async function quickSettleLaunch(row: Row, paymentForm: string) {
+        if (!company || busy || !paymentForm) return false;
+        setBusy(true);
+        try {
+            await registerLaunchSettlement(row, { forma_pagamento_id: paymentForm, valor: remainingAmount(row, dashboardData),
+                data: localDateInputValue(), desconto: 0, acrescimo: 0 });
+            if (activeCompanyId.current === company.id) notify("Baixa registrada e status atualizado.");
+            return true;
+        } catch (error) {
+            notify(error instanceof Error ? error.message : "Não foi possível registrar a baixa.", "error");
+            return false;
+        } finally { setBusy(false); }
+    }
+
     async function settleLaunch(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!company || !selectedRow) return;
@@ -718,21 +739,10 @@ function App() {
         }
         setBusy(true);
         try {
-            await api(
-                `/lancamentos/${selectedRow.id}/baixar`,
-                {
-                    method: "POST",
-                    body: JSON.stringify({
-                        forma_pagamento_id: values.forma_pagamento_id,
-                        valor: Number(values.valor),
-                        data: values.data,
-                        desconto: Number(values.desconto || 0),
-                        acrescimo: Number(values.acrescimo || 0),
-                    }),
-                },
-                String(selectedRow.empresa_id),
-            );
-            await reloadCurrent();
+            await registerLaunchSettlement(selectedRow, {
+                forma_pagamento_id: String(values.forma_pagamento_id), valor: Number(values.valor), data: String(values.data),
+                desconto: Number(values.desconto || 0), acrescimo: Number(values.acrescimo || 0),
+            });
             if (activeCompanyId.current !== company.id) return;
             if (settlementOverlay) setSettlementOverlay(false);
             else { setModal(null); setSelectedRow(null); }
@@ -1159,6 +1169,9 @@ function App() {
                                 onSort={key => setSorting({ page, key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
                                 onPageChange={next => setPagination({ key: filterKey, page: next })}
                                 loadOptions={loadFilterOptions}
+                                loadQuickSettlementOptions={loadQuickSettlementOptions}
+                                onQuickSettle={quickSettleLaunch}
+                                busy={busy}
                                 visibleRows={filteredRows}
                                 loading={Boolean(scopeKey) && (loading || (!loadError && listResult?.key !== filterKey))}
                                 search={search}

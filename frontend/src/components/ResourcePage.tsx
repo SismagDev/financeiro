@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pagination } from "./Pagination";
 import { SearchInput } from "./SearchInput";
 import { SettlementFilters } from "./SettlementFilters";
@@ -44,6 +44,9 @@ type Props = {
     onEdit: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
+    onQuickSettle: (row: Row, paymentForm: string) => Promise<boolean>;
+    loadQuickSettlementOptions: (row: Row) => OptionLoader;
+    busy: boolean;
     onShowSettlements: (row: Row) => void;
     hasSettlements: (row: Row) => boolean;
     lancamentoFilters?: Filters;
@@ -68,6 +71,9 @@ export function ResourcePage({
     onEdit,
     onDelete,
     onSettle,
+    onQuickSettle,
+    loadQuickSettlementOptions,
+    busy,
     onShowSettlements,
     hasSettlements,
     lancamentoFilters,
@@ -78,6 +84,38 @@ export function ResourcePage({
     dateFilters,
     onDateFiltersChange,
 }: Props) {
+    const [quickSettlement, setQuickSettlement] = useState<{ row: Row; paymentForm: string } | null>(null);
+    const quickRoot = useRef<HTMLDivElement>(null);
+    const tableWrap = useRef<HTMLDivElement>(null);
+    const submitting = useRef(false);
+    const quickAccount = quickSettlement?.row;
+    const quickOptions = useMemo(() => quickAccount ? loadQuickSettlementOptions(quickAccount) : undefined,
+        [quickAccount, loadQuickSettlementOptions]);
+    useLayoutEffect(() => {
+        if (quickAccount && tableWrap.current) tableWrap.current.scrollLeft = tableWrap.current.scrollWidth;
+    }, [quickAccount]);
+    useEffect(() => {
+        if (!quickSettlement) return;
+        const outside = (event: Event) => {
+            if (event.target instanceof Node && !quickRoot.current?.contains(event.target)) setQuickSettlement(null);
+        };
+        // Fecha no clique para não mover o botão de outra linha entre pointerdown e pointerup.
+        document.addEventListener("click", outside, true);
+        document.addEventListener("keydown", outside, true);
+        return () => {
+            document.removeEventListener("click", outside, true);
+            document.removeEventListener("keydown", outside, true);
+        };
+    }, [quickSettlement]);
+    async function confirmQuickSettlement() {
+        if (!quickSettlement?.paymentForm || busy || submitting.current) return;
+        submitting.current = true;
+        try {
+            if (await onQuickSettle(quickSettlement.row, quickSettlement.paymentForm)) {
+                setQuickSettlement(current => current === quickSettlement ? null : current);
+            }
+        } finally { submitting.current = false; }
+    }
     const columns: [string, string][] = ["lancamentos", "baixas", "pessoas", "formas", "bancos"].includes(resource.key)
         ? [["empresa_identificador", "Empresa"], ...resource.columns] : resource.columns;
     const showSettlement = resource.key === "lancamentos";
@@ -215,7 +253,7 @@ export function ResourcePage({
                         </div>
                     </div>
                 )}
-                <div className="table-wrap">
+                <div className="table-wrap" ref={tableWrap}>
                     <table className={`data-table resource-table resource-${resource.key}`}>
                         <thead>
                             <tr>
@@ -321,13 +359,30 @@ export function ResourcePage({
                                                     onClick={() => onSettle(row)}
                                                 >
                                                     <Icon name="check" size={16} />
-                                                    <span>Dar baixa</span>
+                                                    <span>Baixa</span>
                                                 </button>
                                             )}
                                         {showSettlement && hasSettlements(row) && (
                                             <button className="settle-row-button" title="Detalhes das baixas" onClick={() => onShowSettlements(row)}>
                                                 <Icon name="card" size={16} /><span>Detalhes</span>
                                             </button>
+                                        )}
+                                        {showSettlement && Number(row.saldo) > 0 && row.status !== "pago" && row.status !== "cancelado" && (
+                                            quickSettlement && quickSettlement.row.id === row.id && quickSettlement.row.empresa_id === row.empresa_id ?
+                                                <div className="quick-settlement" ref={quickRoot} key={String(row.id)}>
+                                                    <Combobox label="Forma de pagamento da baixa rápida" required disabled={busy}
+                                                        value={quickSettlement.paymentForm} source="formasAtivas"
+                                                        loadOptions={quickOptions}
+                                                        options={paymentForms.filter(item => item.ativo !== false && item.empresa_id === row.empresa_id)
+                                                            .map(item => [String(item.id), String(item.descricao)])}
+                                                        onChange={paymentForm => setQuickSettlement(current => current ? { ...current, paymentForm } : null)} />
+                                                    <button type="button" className="quick-settlement-confirm" title="Confirmar baixa rápida" aria-label="Confirmar baixa rápida"
+                                                        disabled={busy || !quickSettlement.paymentForm} onClick={() => void confirmQuickSettlement()}><Icon name="check" size={18} /></button>
+                                                    <button type="button" title="Cancelar baixa rápida" aria-label="Cancelar baixa rápida"
+                                                        onClick={() => setQuickSettlement(null)}><Icon name="close" size={18} /></button>
+                                                </div> :
+                                                <button type="button" className="quick-settlement-button" title="Baixa rápida" aria-label="Baixa rápida" disabled={busy}
+                                                    onClick={() => setQuickSettlement({ row, paymentForm: "" })}><Icon name="bolt" size={18} /></button>
                                         )}
                                         <button className="row-delete" aria-label="Excluir registro" title="Excluir" onClick={() => onDelete(row)}>
                                             <Icon name="trash" size={16} />

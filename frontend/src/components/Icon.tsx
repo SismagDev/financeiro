@@ -24,6 +24,7 @@ const paths: Record<string, ReactNode> = {
   edit: <><path d="m15 5 4 4M4 20l4-.8L19 8a2.1 2.1 0 0 0-3-3L5 16z"/></>,
   trash: <><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></>,
   check: <path d="m5 12 4 4L19 6"/>,
+  bolt: <path d="m13 2-9 12h7l-1 8 10-13h-7l1-7Z" fill="currentColor"/>,
 }
 
 export function Icon({ name, size = 19 }: { name: string; size?: number }) {

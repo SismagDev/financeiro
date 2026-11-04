@@ -2887,6 +2887,20 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 /* A célula fica no fluxo da linha; somente a lixeira é absoluta. */
 .data-table td.delete-actions { display: table-cell; position: relative; min-width: 48px; padding-right: 46px; text-align: right; white-space: nowrap; }
 .data-table td.delete-actions > button:not(.row-delete) { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin-left: 3px; }
+.data-table .quick-settlement-button { background: #eee7f6; border: 1px solid #d9cbe9; color: #ca8a04; }
+.data-table .launch-actions > .settle-row-button { display: inline-flex !important; }
+.data-table .quick-settlement-button:hover { background: #e4d9f0; color: #a16207; }
+.quick-settlement { display: inline-flex; align-items: center; gap: 8px; margin-left: 6px; vertical-align: middle; text-align: left; }
+.quick-settlement > .combobox { width: 180px; margin-top: 0; white-space: normal; }
+.quick-settlement .combobox .combobox-control input { height: 28px; min-height: 28px; padding: 0 56px 0 8px; border-radius: 6px; background: #ffffffb3; color: var(--ink); font-size: 12px; }
+.quick-settlement .combobox-toggle { width: 26px; height: 26px; border-radius: 0 5px 5px 0; background: #087e740a; color: var(--accent-hover); }
+.quick-settlement .combobox-clear { right: 28px; width: 24px; height: 24px; }
+.quick-settlement .combobox-results button { display: block; width: 100%; height: auto; color: var(--ink); border-radius: 0; }
+.data-table .quick-settlement-confirm { background: #e5f2e8; border: 1px solid #c5dfcd; color: #226a42; }
+.data-table .quick-settlement-confirm:hover { background: #d8eadd; color: #185332; }
+.data-table .quick-settlement > button:last-child { background: #fae9e7; border: 1px solid #edceca; color: #ac3535; }
+.data-table .quick-settlement > button:last-child:hover { background: #f3dcd9; color: #8e2929; }
+.quick-settlement button:disabled, .data-table .quick-settlement-button:disabled { opacity: .5; cursor: not-allowed; }
 .data-table .delete-actions .row-delete { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--delete-foreground); background: var(--delete-background); opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .data-table tr:hover .row-delete, .data-table tr:focus-within .row-delete { opacity: 1; pointer-events: auto; }
 .data-table .delete-actions .row-delete:hover { background: var(--delete-hover-background); color: var(--delete-foreground); }

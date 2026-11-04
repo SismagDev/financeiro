@@ -1,11 +1,12 @@
 import type { PoolClient } from "pg";
+import { randomUUID } from "node:crypto";
 import { adjustmentSchema, liquidValue, validateLaunchAmounts, type SettlementAdjustments, type SettlementConfirmation } from "./launch-values";
 import { isHistoricalRecord } from "../utils/access-import";
 
 export type SettlementKind = "movimentacoes" | "recebimentos";
 type SettlementConfig = { table: SettlementKind; launchType: "pagar" | "receber"; dateColumn: "data_movimentacao" | "data_recebimento" };
 
-type SettlementInput = SettlementConfirmation & SettlementAdjustments & { lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
+type SettlementInput = SettlementConfirmation & SettlementAdjustments & { id?: string; lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
 type SettlementPatch = SettlementConfirmation & { formaPagamentoId?: string; valor?: number; data?: string };
 
 export class SettlementError extends Error {
@@ -100,9 +101,9 @@ export async function createSettlement(client: PoolClient, empresaId: string, ta
         throw new SettlementError("Informe os ajustes da baixa sem a confirmação de acréscimo anterior");
     await ensureValueFits(client, empresaId, input.lancamentoId, launch, principal, config, undefined, input);
     const result = await client.query<{ id: string }>(
-        `INSERT INTO ${config.table} (empresa_id, lancamento_id, forma_pagamento_id, valor, ${config.dateColumn}, desconto, acrescimo)
-         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7) RETURNING id`,
-        [empresaId, input.lancamentoId, input.formaPagamentoId, input.valor.toFixed(2), input.data ?? null, desconto.toFixed(2), acrescimo.toFixed(2)],
+        `INSERT INTO ${config.table} (empresa_id, lancamento_id, forma_pagamento_id, valor, ${config.dateColumn}, desconto, acrescimo, id)
+         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8) RETURNING id`,
+        [empresaId, input.lancamentoId, input.formaPagamentoId, input.valor.toFixed(2), input.data ?? null, desconto.toFixed(2), acrescimo.toFixed(2), input.id ?? randomUUID()],
     );
     const launchStatus = await refreshLaunchStatus(client, empresaId, input.lancamentoId, config);
     return { id: result.rows[0].id, ...launchStatus };

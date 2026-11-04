@@ -358,3 +358,18 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
     .account-edit-modal .account-create-main .form-field textarea { height: 40px; min-height: 40px; }
     .account-edit-modal .account-edit-layout > .account-settlements { flex: none; height: 240px; }
 }
+
+.account-edit-pagar { background: #fffaf9; }
+.account-edit-receber { background: #f3faf5; }
+.account-edit-modal > .account-edit-layout > .record-form > .modal-actions { background: transparent; }
+.account-edit-pagar .account-edit-layout > .account-settlements { background: var(--expense-soft); border-color: #ebd1cb; }
+.account-edit-receber .account-edit-layout > .account-settlements { background: var(--income-soft); border-color: #b2d7bc; }
+.account-edit-pagar .account-settlements thead th { background: var(--expense-hover); color: var(--expense); }
+.account-edit-receber .account-settlements thead th { background: var(--income-hover); color: var(--income); }
+.account-edit-modal .account-create-main .client-search > label { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; gap: 4px; }
+.account-edit-modal .account-create-main .liquid-value-editor { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+    .account-edit-modal .account-create-main .client-search > label { grid-template-columns: 78px minmax(0, 1fr); }
+}
+.account-edit-modal .settlement-list { overscroll-behavior: contain; }
+.modal-backdrop { overscroll-behavior: contain; }

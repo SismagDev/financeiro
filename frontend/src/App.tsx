@@ -4,7 +4,9 @@ import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
 import { CompanySelect } from "./components/CompanySelect";
 import { companyRows, toggleCompany } from "./utils/companies";
-import { remainingAmount, settlementPrincipal } from "./utils/accounts";
+import { netAmount, remainingAmount, settlementPrincipal } from "./utils/accounts";
+import { accountFormSnapshot } from "./utils/account-form";
+import { useModalScrollLock } from "./hooks/useModalScrollLock";
 import { Icon } from "./components/Icon";
 import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
 import type { Company, ListMeta, OptionLoader, Row, User } from "./types";
@@ -207,6 +209,7 @@ function AuthScreen({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 function App() {
+    useModalScrollLock();
     const [user, setUser] = useState<User | null>(null);
     const [authChecked, setAuthChecked] = useState(false);
     const authRequested = useRef(false);
@@ -246,13 +249,24 @@ function App() {
     const [busy, setBusy] = useState(false);
     const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
+    const [pendingSettlements, setPendingSettlements] = useState<Row[]>([]);
+    const [editedAmounts, setEditedAmounts] = useState<Row | null>(null);
+    const accountForm = useRef<HTMLFormElement | null>(null);
+    const initialAccountForm = useRef<string | null>(null);
+    const closingModal = useRef(false);
     const [createAccountType, setCreateAccountType] = useState<"receber" | "pagar" | undefined>(undefined);
     function setModal(next: typeof modal, tipo?: "receber" | "pagar") {
         formVersion.current++;
+        initialAccountForm.current = null; accountForm.current = null;
+        setPendingSettlements([]); setEditedAmounts(null);
         if (next === "create") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
+    const initializeAccountForm = useCallback((form: HTMLFormElement) => {
+        accountForm.current = form;
+        initialAccountForm.current ??= accountFormSnapshot(form, formCompanyId);
+    }, [formCompanyId]);
     const formLookups = useMemo(() => {
         const data = companyRows(lookups, selectedCompanyIds, formCompanyId);
         if (selectedRow) for (const [key, idField, labelField] of [["pessoas", "pessoa_id", "pessoa_nome"], ["planos", "plano_conta_id", "plano_conta_descricao"], ["bancos", "banco_id", "banco_descricao"], ["formas", "forma_pagamento_id", "forma_pagamento_descricao"], ["lancamentos", "lancamento_id", "descricao"]]) {
@@ -640,6 +654,9 @@ function App() {
                     method: editing ? "PATCH" : "POST",
                     body: JSON.stringify({
                         ...payload,
+                        ...(editing && resource.key === "lancamentos" && pendingSettlements.length ? { baixas_pendentes: pendingSettlements.map(row => ({
+                            id: row.id, forma_pagamento_id: row.forma_pagamento_id, valor: row.valor, data: row.data, desconto: row.desconto, acrescimo: row.acrescimo,
+                        })) } : {}),
                         ...(customInstallments ? { parcelas_personalizadas: customInstallments } : {}),
                         ...(!editing && resource.key === "lancamentos" && parcelas > 1
                             ? {
@@ -687,6 +704,18 @@ function App() {
         event.preventDefault();
         if (!company || !selectedRow) return;
         const values = Object.fromEntries(new FormData(event.currentTarget));
+        if (modal === "edit" && resource?.key === "lancamentos") {
+            const amount = Number(values.valor), discount = Number(values.desconto || 0), surcharge = Number(values.acrescimo || 0);
+            const principal = settlementPrincipal({ valor: amount, desconto: discount, acrescimo: surcharge });
+            if (!Number.isFinite(amount) || amount <= 0 || principal <= 0 || principal > remainingAmount(editAccount!, dashboardData) + 0.005) {
+                notify("Confira o valor e o saldo disponível para a baixa.", "error"); return;
+            }
+            setPendingSettlements(rows => [...rows, { id: crypto.randomUUID(), pendente: true, forma_pagamento_id: String(values.forma_pagamento_id),
+                forma_pagamento_descricao: (formLookups.formas || []).find(row => row.id === values.forma_pagamento_id)?.descricao,
+                valor: amount, desconto: discount, acrescimo: surcharge, data: String(values.data), data_recebimento: String(values.data) }]);
+            setSettlementOverlay(false);
+            return;
+        }
         setBusy(true);
         try {
             await api(
@@ -716,6 +745,7 @@ function App() {
     }
 
     async function removeSettlement(row: Row) {
+        if (row.pendente) { setPendingSettlements(rows => rows.filter(item => item.id !== row.id)); return; }
         if (!company || !selectedRow || busy || !(await ask({ title: "Excluir baixa", message: "Remover esta baixa? O saldo da conta será atualizado.", confirmLabel: "Excluir baixa", danger: true }))) return;
         if (activeCompanyId.current !== company.id) return;
         const key = selectedRow.tipo === "receber" ? "recebimentos" : "movimentacoes";
@@ -808,6 +838,21 @@ function App() {
         );
     const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 1} value={companyFilter} onChange={changeCompanyFilter} />;
     const currentAccount = selectedRow && currentRows.find(row => row.id === selectedRow.id && row.empresa_id === selectedRow.empresa_id) || selectedRow;
+    const editBalance = currentAccount ? Math.max(0, Math.round(((editedAmounts ? netAmount(editedAmounts) : netAmount(currentAccount)) -
+        (netAmount(currentAccount) - remainingAmount(currentAccount, dashboardData)) - pendingSettlements.reduce((sum, row) => sum + settlementPrincipal(row), 0)) * 100) / 100) : 0;
+    const editAccount = currentAccount ? { ...currentAccount, saldo: editBalance,
+        status: currentAccount.status === "cancelado" ? "cancelado" : editBalance <= 0 ? "pago" : "pendente" } : null;
+    async function requestCloseModal() {
+        if (busy || closingModal.current || settlementOverlay) return;
+        const changed = resource?.key === "lancamentos" && (modal === "create" || modal === "edit") &&
+            (pendingSettlements.length > 0 || (accountForm.current && initialAccountForm.current !== null && accountFormSnapshot(accountForm.current, formCompanyId) !== initialAccountForm.current));
+        const version = formVersion.current;
+        closingModal.current = true;
+        try {
+            if (changed && !(await ask({ title: "Descartar alterações?", message: "Existem alterações pendentes. Deseja descartá-las e fechar? As baixas pendentes também serão descartadas.", confirmLabel: "Descartar e fechar", danger: true }))) return;
+            if (version === formVersion.current) { setModal(null); setSelectedRow(null); }
+        } finally { closingModal.current = false; }
+    }
     const nav = [
         { key: "dashboard", title: "Visão geral", icon: "grid", section: "WORKSPACE" },
         { key: "lancamentos", title: "Contas", icon: "arrows", section: "FINANCEIRO" },
@@ -1154,10 +1199,11 @@ function App() {
                         className="modal-backdrop"
                         inert={settlementOverlay}
                         onMouseDown={(event) => {
-                            if (event.target === event.currentTarget) setModal(null);
+                            if (event.target === event.currentTarget) void requestCloseModal();
                         }}
+                        onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) { event.preventDefault(); void requestCloseModal(); } }}
                     >
-                        <section className={`modal-card ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? "account-new-modal account-edit-modal" : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1192,7 +1238,7 @@ function App() {
                                 </div>
                                 {modal === "create" && resource?.key === "lancamentos" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
                                     value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
-                                <button className="icon-button" onClick={() => setModal(null)}>
+                                <button className="icon-button" aria-label="Fechar cadastro" onClick={() => void requestCloseModal()}>
                                     <Icon name="close" />
                                 </button>
                             </div>
@@ -1226,7 +1272,7 @@ function App() {
                                         <button
                                             type="button"
                                             className="button button-quiet"
-                                            onClick={() => setModal(null)}
+                                            onClick={() => void requestCloseModal()}
                                         >
                                             Cancelar
                                         </button>
@@ -1238,7 +1284,7 @@ function App() {
                                 </form>
                             ) : modal === "settle" && currentAccount ? (
                                 <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
-                                    busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => { setModal(null); setSelectedRow(null); }} />
+                                    busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => void requestCloseModal()} />
                             ) : (
                                 <div className={modal === "edit" && resource?.key === "lancamentos" ? "account-edit-layout" : undefined}>
                                 <form onSubmit={saveRecord} className="record-form">
@@ -1255,16 +1301,15 @@ function App() {
                                             companyId={formCompanyId}
                                             editing={modal === "edit"}
                                             fixedType={modal === "create" ? createAccountType : undefined}
+                                            onReady={resource.key === "lancamentos" ? initializeAccountForm : undefined}
+                                            onValueChange={resource.key === "lancamentos" ? setEditedAmounts : undefined}
                                         />
                                     )}
                                     <div className="modal-actions">
                                         <button
                                             type="button"
                                             className="button button-quiet"
-                                            onClick={() => {
-                                                setModal(null);
-                                                setSelectedRow(null);
-                                            }}
+                                            onClick={() => void requestCloseModal()}
                                         >
                                             Cancelar
                                         </button>
@@ -1281,8 +1326,8 @@ function App() {
                                         </button>}
                                     </div>
                                 </form>
-                                {modal === "edit" && resource?.key === "lancamentos" && currentAccount &&
-                                    <AccountSettlements compact reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
+                                {modal === "edit" && resource?.key === "lancamentos" && editAccount &&
+                                    <AccountSettlements compact drafts={pendingSettlements} reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={editAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />}
                                 </div>
                             )}
@@ -1292,12 +1337,12 @@ function App() {
                 )}
                 {settlementOverlay && currentAccount && <div className="modal-backdrop settlement-overlay" onMouseDown={event => {
                     if (event.target === event.currentTarget && !busy) setSettlementOverlay(false);
-                }}>
+                }} onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !busy && !document.querySelector("dialog[open]")) { event.preventDefault(); setSettlementOverlay(false); } }}>
                     <section className="modal-card settlement-modal" role="dialog" aria-modal="true" aria-label="Registrar baixa">
                         <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
                             <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
                         </div>
-                        <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                        <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(modal === "edit" && editAccount ? editAccount : currentAccount, dashboardData)}
                             busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
                     </section>
                 </div>}

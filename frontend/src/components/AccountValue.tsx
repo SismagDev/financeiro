@@ -21,7 +21,10 @@ export function AccountValueInput({ account, label = "Valor original", onChange,
     if (liquidOnly) return <div className="account-value-editor liquid-value-editor">
         <label className="form-field">Valor líquido
             <input type="number" min={Math.max(0, (Math.round((adjustments.acrescimo - adjustments.desconto) * 100) + 1) / 100)} step="0.01" required
-                defaultValue={net.toFixed(2)} onChange={event => setValue(event.target.value === "" ? "" : String(netAmount({ valor: event.target.value, desconto: adjustments.acrescimo, acrescimo: adjustments.desconto })))} />
+                data-dirty-field="valor_liquido" defaultValue={net.toFixed(2)} onChange={event => {
+                    const next = event.target.value === "" ? "" : String(netAmount({ valor: event.target.value, desconto: adjustments.acrescimo, acrescimo: adjustments.desconto }));
+                    setValue(next); onChange?.({ valor: next, ...adjustments });
+                }} />
         </label>
         <input type="hidden" name="valor" value={value} />
         <input type="hidden" name="desconto" value={adjustments.desconto} />

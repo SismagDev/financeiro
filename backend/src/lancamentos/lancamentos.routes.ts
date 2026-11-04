@@ -156,7 +156,10 @@ router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
 router.patch("/:id", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
-    const parsed = schema.patch.safeParse(req.body);
+    const parsed = schema.patch.extend({ baixas_pendentes: z.array(z.object({
+        id: z.string().uuid(), forma_pagamento_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0),
+        data, ...settlementAdjustmentShape,
+    }).strict()).max(500).refine(rows => new Set(rows.map(row => row.id)).size === rows.length, "Baixas repetidas").optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
     if (!Object.keys(parsed.data).length) return res.status(400).json({ message: "Nenhum campo para atualização" });
     try { return res.json(await updateLaunch(req.empresaId!, id.data, parsed.data)); }

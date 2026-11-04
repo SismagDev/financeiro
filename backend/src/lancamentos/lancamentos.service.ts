@@ -91,7 +91,9 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
     } finally { if (!transactionClient) client.release(); }
 }
 
-export async function updateLaunch(empresaId: string, id: string, input: Partial<LaunchInput>) {
+export type PendingSettlement = { id: string; forma_pagamento_id: string; valor: number; data: string; desconto?: number; acrescimo?: number };
+
+export async function updateLaunch(empresaId: string, id: string, input: Partial<LaunchInput> & { baixas_pendentes?: PendingSettlement[] }) {
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
@@ -114,7 +116,8 @@ export async function updateLaunch(empresaId: string, id: string, input: Partial
             if (!(await client.query(`SELECT 1 FROM ${table} WHERE empresa_id = $1 AND id = $2`, [empresaId, input[field]])).rowCount)
                 throw new SettlementError("Uma referência não existe ou pertence a outra empresa");
         }
-        const entries = Object.entries(input).filter(([, value]) => value !== undefined);
+        const { baixas_pendentes = [], ...fields } = input;
+        const entries = Object.entries(fields).filter(([, value]) => value !== undefined);
         const nextStatus = previous.status === "cancelado" || net === liquidValue(previous) ? previous.status
             : settled >= net - 0.005 ? "pago" : settled > 0 ? "parcial" : "pendente";
         entries.push(["status", nextStatus]);
@@ -122,6 +125,22 @@ export async function updateLaunch(empresaId: string, id: string, input: Partial
         values.push(empresaId, id);
         await client.query(`UPDATE lancamentos SET ${entries.map(([field], index) => `${field} = $${index + 1}`).join(", ")}
             WHERE empresa_id = $${values.length - 1} AND id = $${values.length}`, values);
+        const table = (input.tipo ?? previous.tipo) === "receber" ? "recebimentos" : "movimentacoes";
+        const dateColumn = table === "recebimentos" ? "data_recebimento" : "data_movimentacao";
+        for (const baixa of baixas_pendentes) {
+            // O UUID da baixa permite repetir a mesma gravação após perda da resposta, sem duplicá-la.
+            const existing = await client.query<{ lancamento_id: string; forma_pagamento_id: string; valor: string; desconto: string; acrescimo: string; data: string }>(
+                `SELECT lancamento_id, forma_pagamento_id, valor, desconto, acrescimo, ${dateColumn}::date::text AS data FROM ${table} WHERE empresa_id = $1 AND id = $2`, [empresaId, baixa.id]);
+            const saved = existing.rows[0];
+            if (saved) {
+                if (saved.lancamento_id !== id || saved.forma_pagamento_id !== baixa.forma_pagamento_id || saved.data !== baixa.data ||
+                    ["valor", "desconto", "acrescimo"].some(key => Math.round(Number(saved[key as "valor" | "desconto" | "acrescimo"]) * 100) !== Math.round(Number(baixa[key as "valor" | "desconto" | "acrescimo"] ?? 0) * 100)))
+                    throw new SettlementError("Uma baixa desta tentativa já foi gravada com outros dados. Reabra a conta para conferir.", 409);
+                continue;
+            }
+            await createSettlement(client, empresaId, table, { id: baixa.id, lancamentoId: id, formaPagamentoId: baixa.forma_pagamento_id,
+                valor: baixa.valor, data: baixa.data, desconto: baixa.desconto, acrescimo: baixa.acrescimo });
+        }
         await client.query("COMMIT");
         return { id };
     } catch (error) { await client.query("ROLLBACK"); throw error; }

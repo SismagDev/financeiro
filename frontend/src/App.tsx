@@ -408,7 +408,7 @@ function App() {
 
     const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
     const dateFilters = page === "baixas" ? settlementFilters : undefined;
-    const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "data_vencimento" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
+    const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "tipo" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
     const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, sort.key, sort.direction, page === "dashboard" ? dashboardYear : null]);
     const requestedPage = pagination.key === filterKey ? pagination.page : 1;
     const pageQuery = useMemo(() => {
@@ -613,7 +613,7 @@ function App() {
         for (const field of resource.fields) {
             const value = form.get(field.name);
             if (field.type === "checkbox") payload[field.name] = value === "on";
-            else if (["observacoes", "razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "num_doc"].includes(field.name)) payload[field.name] = String(value || "").trim() || null;
+            else if (["observacoes", "razao_social", "endereco", "responsavel_nome", "responsavel_cpf", "num_doc", "agencia", "conta"].includes(field.name)) payload[field.name] = String(value || "").trim() || null;
             else if (field.name === "competencia" && typeof value === "string") payload[field.name] = competenceDate(value);
             else if ((field.name === "plano_conta_id" || field.name === "pessoa_id") && value === "" && modal === "edit") payload[field.name] = null;
             else if (typeof value === "string" && value !== "")
@@ -846,7 +846,7 @@ function App() {
                 <div className="onboarding-card"><div className="onboarding-icon"><Icon name="bank" size={26} /></div><span className="eyebrow muted">ACESSO PENDENTE</span><h1>Você ainda não possui<br />uma empresa vinculada.</h1><p>Peça a um administrador para vincular seu usuário a uma empresa.</p><button className="text-button" onClick={logout}>Sair da conta</button></div>
             </main>
         );
-    const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 1} value={companyFilter} onChange={changeCompanyFilter} />;
+    const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 0} value={companyFilter} onChange={changeCompanyFilter} />;
     const currentAccount = selectedRow && currentRows.find(row => row.id === selectedRow.id && row.empresa_id === selectedRow.empresa_id) || selectedRow;
     const editBalance = currentAccount ? Math.max(0, Math.round(((editedAmounts ? netAmount(editedAmounts) : netAmount(currentAccount)) -
         (netAmount(currentAccount) - remainingAmount(currentAccount, dashboardData)) - pendingSettlements.reduce((sum, row) => sum + settlementPrincipal(row), 0)) * 100) / 100) : 0;

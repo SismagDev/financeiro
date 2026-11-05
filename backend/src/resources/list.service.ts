@@ -131,7 +131,7 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
         ...(launches ? ["pessoa_nome", "plano_conta_descricao", ...(!query.opcoes ? ["saldo"] : [])] : []),
         ...(settlements ? ["data_baixa", "pessoa_id", "descricao", "natureza", "forma_pagamento_id"] : [])];
     if (query.ordem && !allowed.includes(query.ordem)) throw new Error("Ordenação inválida");
-    const key = query.ordem || (query.opcoes ? "created_at" : cash ? "data_baixa" : launches ? "data_vencimento" : settlements ? "data_baixa" : "created_at");
+    const key = query.ordem || (query.opcoes ? "created_at" : cash ? "data_baixa" : launches ? "tipo" : settlements ? "data_baixa" : "created_at");
     const mapped = key === "pessoa_id" && (launches || settlements) ? "pessoa_nome" : key === "plano_conta_id" && launches ? "plano_conta_descricao"
         : key === "forma_pagamento_id" && settlements ? "forma_pagamento_descricao" : key;
     const direction = query.direcao || (launches || cash ? "asc" : "desc");
@@ -139,10 +139,17 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
     const optionLabel = launches && query.opcoes !== "descricoes"
         ? "concat_ws(' · ', NULLIF(pessoa_nome, ''), NULLIF(descricao, ''), CASE WHEN tipo = 'receber' THEN 'Recebimento' ELSE 'Pagamento' END)"
         : people ? "nome" : "descricao";
+    const accountOrder = [mapped, ...["tipo", "data_vencimento", "pessoa_nome", "descricao", "num_doc", "valor"].filter(column => column !== mapped)]
+        .map((column, index) => {
+            const expression = column === "valor" ? "(valor - COALESCE(desconto,0) + COALESCE(acrescimo,0))"
+                : ["pessoa_nome", "descricao", "num_doc"].includes(column) ? alphabeticalOrder(column) : column;
+            return `${expression} ${index === 0 ? direction : "asc"} NULLS LAST`;
+        }).join(", ");
     const order = query.opcoes
         ? `${alphabeticalOrder(optionLabel)} ASC NULLS LAST, id ASC, empresa_id ASC`
         : config.table === "formas_pagamento"
         ? "ativo DESC NULLS LAST, lower(descricao) ASC, lower(banco_descricao) ASC NULLS LAST, id ASC, empresa_id ASC"
+        : launches ? `${accountOrder}, id ASC, empresa_id ASC`
         : `${mapped === "valor" && launches ? "(valor - COALESCE(desconto,0) + COALESCE(acrescimo,0))" : mapped} ${direction} NULLS LAST, id ${direction}, empresa_id ${direction}${settlements ? `, origem ${direction}` : ""}`;
     return { source, where: clauses.length ? clauses.join(" AND ") : "TRUE", values, order, launches, cash };
 }

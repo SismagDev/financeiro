@@ -109,9 +109,15 @@ export const resources: Resource[] = [
         endpoint: "/bancos",
         singular: "banco",
         icon: "bank",
-        fields: [{ name: "descricao", label: "Nome do banco", required: true, wide: true }],
+        fields: [
+            { name: "descricao", label: "Nome do banco", required: true, wide: true },
+            { name: "agencia", label: "Agência", maxLength: 100 },
+            { name: "conta", label: "Conta", maxLength: 100 },
+        ],
         columns: [
             ["descricao", "Banco"],
+            ["agencia", "Agência"],
+            ["conta", "Conta"],
             ["ativo", "Ativo"],
         ],
     },

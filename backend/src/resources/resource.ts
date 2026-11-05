@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { z, type ZodObject, type ZodRawShape } from "zod";
+import { DatabaseError } from "pg";
 import { pool } from "../db";
 import { attachCurrentUser, requireRole } from "../middlewares/auth";
 import { requireEmpresa } from "../middlewares/empresa";
@@ -15,6 +16,7 @@ type ResourceConfig = {
     patch: ZodObject<ZodRawShape>;
     filter: ZodObject<ZodRawShape>;
     relations?: Record<string, string>;
+    uniqueConflictMessages?: Record<string, string>;
 };
 
 function columns(config: ResourceConfig) {
@@ -100,8 +102,10 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
                 values,
             );
             return res.status(201).json({ id: result.rows[0].id });
-        } catch {
-            return res.status(400).json({ message: "Não foi possível cadastrar o registro" });
+        } catch (error) {
+            const message = error instanceof DatabaseError && error.code === "23505" && error.constraint
+                ? config.uniqueConflictMessages?.[error.constraint] : undefined;
+            return res.status(400).json({ message: message || "Não foi possível cadastrar o registro" });
         }
     });
 
@@ -125,8 +129,10 @@ export function createResourceRouter(config: ResourceConfig, secured = true): Ro
             );
             if (!result.rows[0]) return res.status(404).json({ message: "Registro não encontrado" });
             return res.status(200).json({ id: result.rows[0].id });
-        } catch {
-            return res.status(400).json({ message: "Não foi possível atualizar o registro" });
+        } catch (error) {
+            const message = error instanceof DatabaseError && error.code === "23505" && error.constraint
+                ? config.uniqueConflictMessages?.[error.constraint] : undefined;
+            return res.status(400).json({ message: message || "Não foi possível atualizar o registro" });
         }
     });
 

@@ -438,3 +438,48 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
     .daily-cash-modal .daily-cash-entry-pages .icon-button { width: 22px; height: 22px; }
     .daily-cash-modal .daily-cash-settlements > .installment-total { margin-top: 2px; padding-top: 2px; padding-bottom: 2px; line-height: 1.2; }
 }
+
+/* Cores locais da edição acompanham a natureza da conta, inclusive nas bordas. */
+.account-edit-pagar {
+    --control-border: #e2c6bf; --panel-border: #e2c6bf;
+    --accent: #a36a5b; --accent-hover: #895446; --accent-soft: #fbefeb;
+    --expense: #985d4e; --expense-soft: #fff5f2; --expense-hover: #f9e9e3;
+    background: #fffaf8;
+}
+.account-edit-receber { --control-border: #b2d7bc; --panel-border: #b2d7bc; --accent: var(--income); --accent-hover: #0f6038; --accent-soft: var(--income-soft); }
+.account-edit-pagar .account-edit-layout > .account-settlements,
+.account-edit-receber .account-edit-layout > .account-settlements { border-color: var(--panel-border); }
+.account-edit-modal .settlement-list,
+.account-edit-modal .settlement-list tbody tr { background: var(--accent-soft); border-color: var(--panel-border); }
+.chart-plot { position: relative; height: 100%; }
+.bar-group > span { white-space: nowrap; }
+
+@media (max-width: 900px) {
+    /* A tabela cresce com as linhas; somente a página rola verticalmente. */
+    .bounded-list-area { height: auto; overflow: visible; }
+    .bounded-list-area > .page-content { flex: none; min-height: auto; display: block; }
+    .bounded-list-area .list-panel { display: block; min-height: auto; }
+    .bounded-list-area .table-wrap { flex: none; min-height: auto; max-height: none; overscroll-behavior: auto; }
+
+    .page-dashboard .dashboard-panels, .page-dashboard .chart-panel { min-width: 0; max-width: 100%; }
+    .page-dashboard .chart-content { min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; }
+    .page-dashboard .chart-plot { min-width: calc(var(--flow-months) * 76px); }
+
+    /* Modais mantêm todos os controles acessíveis sem comprimir os campos. */
+    .modal-backdrop:has(> .modal-card:not(.daily-cash-modal)) { padding: 8px; }
+    .modal-card:not(.daily-cash-modal) { max-height: calc(100dvh / var(--app-zoom, 1) - 16px); overflow: auto; }
+    .modal-card:not(.daily-cash-modal) .form-grid { row-gap: 6px; }
+    .modal-card:not(.daily-cash-modal) .form-field,
+    .modal-card:not(.daily-cash-modal) .account-create-main .form-field { margin-bottom: 12px; gap: 6px; }
+    .modal-card:not(.daily-cash-modal) .form-field :is(input:not([type=radio]):not([type=checkbox]), select),
+    .modal-card:not(.daily-cash-modal) .combobox .combobox-control input { height: 36px; min-height: 36px; }
+    .modal-card:not(.daily-cash-modal) .modal-actions { gap: 10px; padding-top: 12px; margin-top: 10px; }
+    .account-new-modal:not(.daily-cash-modal) { height: auto; }
+    .account-new-modal:not(.daily-cash-modal) > div:not(.modal-head),
+    .account-new-modal:not(.daily-cash-modal) > div > .record-form { flex: none; }
+    .account-new-modal:not(.daily-cash-modal) .account-create-main > .form-grid { height: auto; grid-template-rows: none; }
+    .account-new-modal:not(.daily-cash-modal) .account-create-main .form-field textarea { height: 80px; min-height: 80px; }
+    .account-new-modal:not(.daily-cash-modal) .account-installment-panel { flex: none; height: auto; margin-top: 8px; }
+    .account-edit-modal .account-edit-layout > .account-settlements { flex: none; height: auto; margin-top: 12px; }
+    .account-edit-modal .settlement-list { flex: none; max-height: none; overscroll-behavior: auto; }
+}

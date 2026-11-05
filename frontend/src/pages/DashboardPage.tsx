@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { Status } from "../components/Status";
@@ -182,33 +182,35 @@ export function DashboardPage({
                                     ))}
                                 </div>
                                 <div className="chart-content">
-                                    <div className="chart-grid">
-                                        {Array.from({ length: 5 }, (_, index) => (
-                                            <i key={index} />
-                                        ))}
-                                    </div>
-                                    <div className="bars">
-                                        {monthlyFlow.map((month) => (
-                                            <div className="bar-group" key={month.key}>
-                                                <div className="bar-pair">
-                                                    <i
-                                                        className="bar-in"
-                                                        data-tooltip={currency(month.income)}
-                                                        style={{
-                                                            height: `${(month.income / chartMaximum) * 100}%`,
-                                                        }}
-                                                    />
-                                                    <i
-                                                        className="bar-out"
-                                                        data-tooltip={currency(month.outcome)}
-                                                        style={{
-                                                            height: `${(month.outcome / chartMaximum) * 100}%`,
-                                                        }}
-                                                    />
+                                    <div className="chart-plot" style={{ "--flow-months": monthlyFlow.length } as CSSProperties}>
+                                        <div className="chart-grid">
+                                            {Array.from({ length: 5 }, (_, index) => (
+                                                <i key={index} />
+                                            ))}
+                                        </div>
+                                        <div className="bars">
+                                            {monthlyFlow.map((month) => (
+                                                <div className="bar-group" key={month.key}>
+                                                    <div className="bar-pair">
+                                                        <i
+                                                            className="bar-in"
+                                                            data-tooltip={currency(month.income)}
+                                                            style={{
+                                                                height: `${(month.income / chartMaximum) * 100}%`,
+                                                            }}
+                                                        />
+                                                        <i
+                                                            className="bar-out"
+                                                            data-tooltip={currency(month.outcome)}
+                                                            style={{
+                                                                height: `${(month.outcome / chartMaximum) * 100}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span>{month.label}</span>
                                                 </div>
-                                                <span>{month.label}</span>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

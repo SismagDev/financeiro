@@ -41,7 +41,7 @@ export function AccountValueInput({ account, label = "Valor original", onChange,
             <div className="adjustment-controls">
                 <label className="form-field">Ajuste
                     <select value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
-                        <option value="desconto">Desconto</option><option value="acrescimo">Acréscimo</option>
+                        <option value="acrescimo">Acréscimo</option><option value="desconto">Desconto</option>
                     </select>
                 </label>
                 <label className="form-field">{kind === "desconto" ? "Descontar" : "Acrescentar"}

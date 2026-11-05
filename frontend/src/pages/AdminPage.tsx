@@ -3,7 +3,7 @@ import { SearchInput } from "../components/SearchInput";
 import { Combobox } from "../components/Combobox";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
-import type { User } from "../types";
+import type { OptionLoader, User } from "../types";
 
 type AdminUser = {
     id: string;
@@ -43,6 +43,11 @@ export function AdminPage({ user, request, onLogout }: Props) {
     const [userSearch, setUserSearch] = useState("");
     const [companySearch, setCompanySearch] = useState("");
     const [error, setError] = useState("");
+    const loadUserOptions = useCallback<OptionLoader>(async (_source, query) => {
+        const result = await request("/admin/users?" + new URLSearchParams({ opcoes: "true", busca: query }));
+        return { options: (result.data as AdminUser[]).filter(item => item.role !== "admin" && !companyUsers.some(linked => linked.id === item.id))
+            .map(item => [item.id, item.nome + " · " + item.email]), hasMore: false };
+    }, [request, companyUsers]);
     const load = useCallback(async () => {
         const [usersResult, companiesResult] = await Promise.all([
             request("/admin/users"),
@@ -237,7 +242,7 @@ export function AdminPage({ user, request, onLogout }: Props) {
                         </label>
                         <label>
                             Perfil
-                            <Combobox key={editingUser?.id || "new"} name="role" label="Perfil" required defaultValue={editingUser?.role || "comum"} options={[["comum", "Comum"], ["contador", "Contador"], ["admin", "Administrador"]]} />
+                            <Combobox key={editingUser?.id || "new"} name="role" label="Perfil" required defaultValue={editingUser?.role || "comum"} options={[["admin", "Administrador"], ["comum", "Comum"], ["contador", "Contador"]]} />
                         </label>
                         <label>
                             Senha
@@ -458,7 +463,8 @@ export function AdminPage({ user, request, onLogout }: Props) {
                         </form>
                         <b>Usuários vinculados</b>
                         <div className="admin-link-user">
-                            <Combobox label="Vincular usuário" placeholder="Vincular usuário" value={linkUserId} onChange={setLinkUserId}
+                            <Combobox key={companyId} label="Vincular usuário" placeholder="Vincular usuário" value={linkUserId} onChange={setLinkUserId}
+                                source="usuarios" loadOptions={loadUserOptions}
                                 options={users.filter(item => item.role !== "admin" && !companyUsers.some(linked => linked.id === item.id))
                                     .map(item => [item.id, item.nome + " · " + item.email])} />
                             <button

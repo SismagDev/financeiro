@@ -2,11 +2,25 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { pool } from "../src/db";
 import { buildList, listRecords } from "../src/resources/list.service";
+import { listUsers } from "../src/admin/admin.service";
 
 const company = "11111111-1111-4111-8111-111111111111";
 const forms = { table: "formas_pagamento", fields: ["descricao", "tipo", "banco_id", "ativo"] };
 const originalQuery = pool.query;
 after(() => { pool.query = originalQuery; });
+
+test("opções de usuários ordenam pelo nome e email sem alterar a listagem administrativa", async () => {
+    let statement = "";
+    let parameters: unknown;
+    pool.query = (async (sql: string, values: unknown) => { statement = sql; parameters = values; return { rows: [] }; }) as typeof pool.query;
+    await listUsers(true, "Ana");
+    assert.match(statement, /WHERE concat_ws\(' · ', nome, email\) ILIKE \$1/);
+    assert.match(statement, /ORDER BY translate\(lower\(btrim\(concat_ws/);
+    assert.deepEqual(parameters, ["%Ana%"]);
+    await listUsers();
+    assert.match(statement, /ORDER BY nome$/);
+    assert.doesNotMatch(statement, /WHERE|translate/);
+});
 
 test("formas mantêm ativas primeiro, nome e instituição antes do recorte de cada página", async () => {
     const statements: string[] = [];
@@ -21,10 +35,31 @@ test("formas mantêm ativas primeiro, nome e instituição antes do recorte de c
         assert.match(sql, /to_jsonb\(base\)::text ILIKE \$\d+/);
         assert.match(sql, /FROM filtered ORDER BY ativo DESC NULLS LAST, lower\(descricao\) ASC, lower\(banco_descricao\) ASC NULLS LAST, id ASC, empresa_id ASC LIMIT 50 OFFSET/);
     }
-    // Os comboboxes continuam usando a ordenação anterior e seu filtro de ativas.
+    // Opções A–Z mantêm o filtro de ativas, sem alterar a ordem da tabela.
     const options = buildList(forms, { opcoes: "true" }, [company], { ativo: true });
-    assert.match(options.order, /^created_at desc/);
+    assert.match(options.order, /^translate\(lower\(btrim\(descricao\)\)/);
+    assert.match(options.order, /COLLATE "C" ASC NULLS LAST, id ASC, empresa_id ASC$/);
     assert.match(options.where, /ativo = \$\d+/);
+});
+
+test("opções usam o rótulo exibido em A–Z antes de paginar, inclusive na busca e com direção desc", async () => {
+    for (const [table, opcoes, label] of [
+        ["pessoas", "true", "nome"], ["bancos", "true", "descricao"], ["planos_contas", "true", "descricao"],
+        ["lancamentos", "descricoes", "descricao"], ["lancamentos", "true", "concat_ws"],
+    ] as const) {
+        const config = { table, fields: ["descricao", "nome", "tipo"] };
+        const query = { opcoes, direcao: "desc" as const, busca: "a", pagina: 2, tamanho: 50 };
+        const built = buildList(config, query, [company]);
+        assert.ok(built.order.startsWith(`translate(lower(btrim(${label}`));
+        assert.match(built.order, /'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'/);
+        assert.doesNotMatch(built.order, /\sDESC\b/i);
+        assert.match(built.source, /empresa_id = ANY\(\$1::uuid\[\]\)/);
+        let statement = "";
+        pool.query = (async (sql: string) => { statement = sql; return { rows: [{ data: [], meta: {} }] }; }) as typeof pool.query;
+        await listRecords(config, query, [company]);
+        assert.ok(statement.includes(`FROM filtered ORDER BY ${built.order} LIMIT 50 OFFSET`));
+        assert.match(statement, /ILIKE/);
+    }
 });
 
 test("consulta da conta por ID mantém a empresa e não depende de busca, período ou página da listagem", () => {

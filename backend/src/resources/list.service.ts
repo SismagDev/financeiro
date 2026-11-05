@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pool } from "../db";
 import { historicalRecordId } from "../utils/access-import";
+import { alphabeticalOrder } from "../utils/alphabetical-order";
 
 const bool = z.enum(["true", "false"]).transform(value => value === "true").optional();
 export const listShape = {
@@ -134,7 +135,13 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
     const mapped = key === "pessoa_id" && (launches || settlements) ? "pessoa_nome" : key === "plano_conta_id" && launches ? "plano_conta_descricao"
         : key === "forma_pagamento_id" && settlements ? "forma_pagamento_descricao" : key;
     const direction = query.direcao || (launches || cash ? "asc" : "desc");
-    const order = config.table === "formas_pagamento" && !query.opcoes
+    // Usa o mesmo texto exibido no seletor de contas; descrições livres têm rótulo próprio.
+    const optionLabel = launches && query.opcoes !== "descricoes"
+        ? "concat_ws(' · ', NULLIF(pessoa_nome, ''), NULLIF(descricao, ''), CASE WHEN tipo = 'receber' THEN 'Recebimento' ELSE 'Pagamento' END)"
+        : people ? "nome" : "descricao";
+    const order = query.opcoes
+        ? `${alphabeticalOrder(optionLabel)} ASC NULLS LAST, id ASC, empresa_id ASC`
+        : config.table === "formas_pagamento"
         ? "ativo DESC NULLS LAST, lower(descricao) ASC, lower(banco_descricao) ASC NULLS LAST, id ASC, empresa_id ASC"
         : `${mapped === "valor" && launches ? "(valor - COALESCE(desconto,0) + COALESCE(acrescimo,0))" : mapped} ${direction} NULLS LAST, id ${direction}, empresa_id ${direction}${settlements ? `, origem ${direction}` : ""}`;
     return { source, where: clauses.length ? clauses.join(" AND ") : "TRUE", values, order, launches, cash };

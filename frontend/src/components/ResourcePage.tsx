@@ -204,7 +204,7 @@ export function ResourcePage({
                             </label>
                             <label>Tipo
                                 <Combobox label="Tipo de conta" required value={lancamentoFilters.tipo}
-                                    options={[["todos", "Todos"], ["pagar", "A pagar"], ["receber", "A receber"]]}
+                                    options={[["pagar", "A pagar"], ["receber", "A receber"], ["todos", "Todos"]]}
                                     onChange={tipo => onLancamentoFiltersChange({ ...lancamentoFilters, tipo: (tipo || "todos") as Filters["tipo"] })} />
                             </label>
                             <label>
@@ -384,9 +384,9 @@ export function ResourcePage({
                                                 <button type="button" className="quick-settlement-button" title="Baixa rápida" aria-label="Baixa rápida" disabled={busy}
                                                     onClick={() => setQuickSettlement({ row, paymentForm: "" })}><Icon name="bolt" size={18} /></button>
                                         )}
-                                        <button className="row-delete" aria-label="Excluir registro" title="Excluir" onClick={() => onDelete(row)}>
+                                        {!(showSettlement && quickAccount?.id === row.id && quickAccount?.empresa_id === row.empresa_id) && <button className="row-delete" aria-label="Excluir registro" title="Excluir" onClick={() => onDelete(row)}>
                                             <Icon name="trash" size={16} />
-                                        </button>
+                                        </button>}
                                     </td>
                                 </tr>
                             ))}

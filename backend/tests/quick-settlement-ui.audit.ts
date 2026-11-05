@@ -50,6 +50,9 @@ async function run() {
         const second = page.locator("tbody tr").filter({ hasText: "Conta rápida 2" });
         const quick = page.locator(".quick-settlement");
         await first.waitFor();
+        await page.getByRole("combobox", { name: "Tipo de conta", exact: true }).click();
+        assert.deepEqual(await page.getByRole("listbox", { name: "Tipo de conta", exact: true }).getByRole("option").allTextContents(), ["A pagar", "A receber", "Todos"]);
+        await page.getByRole("heading", { name: "Contas", exact: true }).click();
         assert.equal(await second.getByRole("button", { name: "Baixa", exact: true }).count(), 1);
         assert.equal(await page.getByText("Dar baixa", { exact: true }).count(), 0);
         await first.getByRole("button", { name: "Baixa rápida", exact: true }).click();
@@ -64,6 +67,7 @@ async function run() {
         await quick.getByRole("button", { name: "Cancelar baixa rápida" }).click();
         assert.equal(posts.length, 0);
         assert.equal(await quick.count(), 0);
+        assert.equal(await second.getByRole("button", { name: "Excluir registro" }).count(), 1);
 
         // A ação externa continua funcionando ao fechar a baixa rápida.
         for (const action of ["row", "details", "settle"]) {
@@ -82,6 +86,14 @@ async function run() {
             await row.getByRole("button", { name: "Baixa rápida", exact: true }).click();
             assert.ok(await page.locator(".table-wrap").evaluate(element =>
                 Math.abs(element.scrollWidth - element.clientWidth - element.scrollLeft) <= 1));
+            await row.hover();
+            assert.equal(await row.getByRole("button", { name: "Excluir registro" }).count(), 0);
+            for (const label of ["Confirmar baixa rápida", "Cancelar baixa rápida"]) {
+                const button = quick.getByRole("button", { name: label });
+                const bounds = await button.boundingBox(), icon = await button.locator("svg").boundingBox();
+                assert.ok(bounds && icon && Math.abs(bounds.x + bounds.width / 2 - icon.x - icon.width / 2) < 1
+                    && Math.abs(bounds.y + bounds.height / 2 - icon.y - icon.height / 2) < 1);
+            }
             await quick.getByRole("combobox").fill("Pix");
             await quick.getByRole("option", { name: `Pix empresa ${index + 1}` }).waitFor();
             await quick.getByRole("combobox").press("ArrowDown");

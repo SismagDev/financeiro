@@ -5,6 +5,7 @@ import { attachCurrentUser, requireRole } from "../middlewares/auth";
 import { requireEmpresa } from "../middlewares/empresa";
 import { formatarErroZod } from "../utils/zod";
 import { updateCompanySettings } from "./empresas.service";
+import { alphabeticalOrder } from "../utils/alphabetical-order";
 
 const identificacao = z.string().regex(/^\d{11}(\d{3})?$/);
 const empresaSchema = z.object({ nome: z.string().trim().min(2).max(200), cnpj: identificacao.nullable().optional() }).strict();
@@ -30,7 +31,7 @@ router.get("/", async (req: Request, res: Response) => {
             `SELECT e.id, e.nome, e.cnpj, e.identificador, e.ativo, ue.perfil, e.licenca_expira_em,
              to_char(e.caixa_data_inicio AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS caixa_data_inicio,
              CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
-             JOIN users_empresas ue ON ue.empresa_id = e.id WHERE ue.user_id = $1 AND e.ativo = TRUE ORDER BY e.nome`,
+             JOIN users_empresas ue ON ue.empresa_id = e.id WHERE ue.user_id = $1 AND e.ativo = TRUE ORDER BY ${alphabeticalOrder("e.nome")} ASC, e.id ASC`,
             [req.currentUser?.id],
         );
         return res.status(200).json({ data: result.rows });

@@ -37,7 +37,7 @@ export function SettlementForm({ account, paymentForms, remaining, busy, formatV
             </label>
             <label className="form-field">Modificador
                 <select aria-label="Modificador" value={modifier} onChange={event => { setModifier(event.target.value); setModifierValue("0"); }}>
-                    <option value="none">Sem ajuste</option><option value="desconto">Desconto</option><option value="acrescimo">Acréscimo</option>
+                    <option value="acrescimo">Acréscimo</option><option value="desconto">Desconto</option><option value="none">Sem ajuste</option>
                 </select>
             </label>
             <label className="form-field">Valor do modificador

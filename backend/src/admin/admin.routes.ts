@@ -11,8 +11,10 @@ router.use(attachCurrentUser, requireRole("admin"));
 const createSchema = z.object({ nome: z.string().trim().min(2).max(200), email: z.string().trim().email().max(254), password: z.string().min(6).max(128), role: z.enum(userRoles).default("comum") }).strict();
 const updateSchema = z.object({ nome: z.string().trim().min(2).max(200).optional(), email: z.string().trim().email().max(254).optional(), password: z.string().min(6).max(128).optional(), role: z.enum(userRoles).optional(), ativo: z.boolean().optional() }).strict();
 
-router.get("/users", async (_req: Request, res: Response) => {
-    try { return res.json({ data: await listUsers() }); } catch { return res.status(500).json({ message: "Erro ao listar usuários" }); }
+router.get("/users", async (req: Request, res: Response) => {
+    const parsed = z.object({ opcoes: z.literal("true").optional(), busca: z.string().trim().max(200).optional() }).safeParse(req.query);
+    if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
+    try { return res.json({ data: await listUsers(Boolean(parsed.data.opcoes), parsed.data.busca) }); } catch { return res.status(500).json({ message: "Erro ao listar usuários" }); }
 });
 router.post("/users", async (req: Request, res: Response) => {
     const parsed = createSchema.safeParse(req.body);

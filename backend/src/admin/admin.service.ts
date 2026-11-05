@@ -1,11 +1,16 @@
 import { pool } from "../db";
 import { hashPassword } from "../utils/passwords";
 import type { UserRole } from "../auth/auth.types";
+import { alphabeticalOrder } from "../utils/alphabetical-order";
 
 export type AdminUser = { id: string; nome: string; email: string; role: UserRole; ativo: boolean; created_at: Date };
 
-export async function listUsers() {
-    const result = await pool.query<AdminUser>("SELECT id, nome, email, role, ativo, created_at FROM users ORDER BY nome");
+export async function listUsers(options = false, search = "") {
+    const label = "concat_ws(' · ', nome, email)";
+    const result = await pool.query<AdminUser>(`SELECT id, nome, email, role, ativo, created_at FROM users
+        ${options && search ? `WHERE ${label} ILIKE $1` : ""}
+        ORDER BY ${options ? `${alphabeticalOrder(label)} ASC, id ASC` : "nome"}`,
+        options && search ? [`%${search.replace(/[\\%_]/g, "\\$&")}%`] : []);
     return result.rows;
 }
 

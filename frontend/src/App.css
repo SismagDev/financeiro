@@ -2891,6 +2891,7 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .data-table .launch-actions > .settle-row-button { display: inline-flex !important; }
 .data-table .quick-settlement-button:hover { background: #e4d9f0; color: #a16207; }
 .quick-settlement { display: inline-flex; align-items: center; gap: 8px; margin-left: 6px; vertical-align: middle; text-align: left; }
+.quick-settlement > button { padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .quick-settlement > .combobox { width: 180px; margin-top: 0; white-space: normal; }
 .quick-settlement .combobox .combobox-control input { height: 28px; min-height: 28px; padding: 0 56px 0 8px; border-radius: 6px; background: #ffffffb3; color: var(--ink); font-size: 12px; }
 .quick-settlement .combobox-toggle { width: 26px; height: 26px; border-radius: 0 5px 5px 0; background: #087e740a; color: var(--accent-hover); }

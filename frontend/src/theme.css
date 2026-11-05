@@ -35,12 +35,9 @@
 
 .daily-cash-button { background: var(--info); color: #fff; }
 .daily-cash-button:hover { background: #244d82; }
-.daily-cash-modal { width: min(1000px, calc(100vw - 32px)); }
 .daily-cash-modal .account-create-layout > * { min-width: 0; }
-.daily-cash-modal .company-form-field { max-width: 240px; margin: 0; }
-.daily-cash-settlements .form-grid { margin-bottom: 12px; }
 .daily-cash-settlements .installment-total { display: flex; justify-content: space-between; gap: 8px; }
-.daily-cash-entries { list-style: none; padding: 0; margin: 12px 0; max-height: 220px; overflow: auto; }
+.daily-cash-entries { list-style: none; padding: 0; margin: 8px 0; }
 .daily-cash-entries li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .daily-cash-entries li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .daily-cash-entries small { display: block; color: var(--muted); }
@@ -391,3 +388,53 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 }
 .account-edit-modal .settlement-list { overscroll-behavior: contain; }
 .modal-backdrop { overscroll-behavior: contain; }
+
+/* Caixa Diário reutiliza o modal de Nova Conta; somente o painel de baixas muda. */
+.modal-backdrop:has(> .daily-cash-modal) { padding: 8px; }
+.daily-cash-modal .account-create-main > .form-grid { height: 100%; grid-template-rows: repeat(3, max-content) minmax(0, 1fr); }
+.daily-cash-modal.account-new-modal .account-create-main > .form-grid > .form-field.full-field:has(textarea) { display: flex; flex-direction: column; align-items: stretch; min-height: 0; margin-bottom: 0; }
+.daily-cash-modal.account-new-modal .account-create-main .form-field textarea { flex: 1; height: 100%; min-height: 0; resize: none; }
+.daily-cash-modal .daily-cash-bank-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.daily-cash-bank-fields > .full-field { grid-column: auto; }
+.daily-cash-modal .daily-cash-settlements .form-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 0; min-width: 0; }
+.daily-cash-value-row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; align-items: end; margin-top: 8px; }
+.daily-cash-modal .daily-cash-add { min-width: 0; width: 100%; height: 42px; padding: 0 8px; font-size: 12px; gap: 4px; white-space: normal; }
+.daily-cash-modal .daily-cash-entries { flex: 1; min-height: 0; margin: 8px 0; }
+.daily-cash-entry-pages { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; }
+.daily-cash-entry-pages .icon-button { width: 28px; height: 28px; }
+.daily-cash-modal .daily-cash-settlements > .installment-total { margin-top: 6px; }
+.daily-cash-modal .daily-cash-form > .field-hint { flex-shrink: 0; margin: 4px 0 0; }
+@media (max-width: 900px) {
+    .daily-cash-modal .account-create-layout { display: grid; grid-template-rows: minmax(170px, .85fr) minmax(270px, 1.15fr); }
+    .daily-cash-modal .account-create-main { min-height: 0; }
+    .daily-cash-modal .account-create-main > .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .daily-cash-modal .daily-cash-settlements { min-height: 0; }
+    .daily-cash-modal .daily-cash-settlements .form-field { font-size: 11px; gap: 2px; }
+    .daily-cash-modal .daily-cash-settlements .combobox-control input,
+    .daily-cash-modal .daily-cash-value-row input { height: 32px; min-height: 32px; }
+    .daily-cash-modal .daily-cash-settlements .combobox { margin-top: 2px; }
+    .daily-cash-modal .daily-cash-settlements .combobox-toggle { width: 30px; }
+    .daily-cash-modal .daily-cash-settlements .combobox-clear { right: 32px; }
+    .daily-cash-modal .daily-cash-settlements .combobox-control input { padding: 0 54px 0 6px; font-size: 11px; }
+    .daily-cash-modal .daily-cash-add { height: 32px; font-size: 11px; }
+    .daily-cash-modal .daily-cash-add svg { display: none; }
+    .daily-cash-modal .daily-cash-entries li { padding: 3px 0; gap: 6px; font-size: 11px; line-height: 1.2; }
+    .daily-cash-modal .daily-cash-entries small { font-size: 10px; }
+    .daily-cash-modal .daily-cash-entries .icon-button { width: 26px; height: 26px; }
+    .daily-cash-modal .daily-cash-settlements > .installment-total { margin-top: 3px; padding-top: 3px; padding-bottom: 3px; font-size: 11px; }
+}
+@media (max-width: 900px) and (max-height: 760px) {
+    .daily-cash-modal .account-create-layout { grid-template-rows: minmax(130px, .75fr) minmax(230px, 1.25fr); }
+    .daily-cash-modal .daily-cash-settlements .combobox-control input,
+    .daily-cash-modal .daily-cash-value-row input,
+    .daily-cash-modal .daily-cash-add { height: 28px; min-height: 28px; }
+    .daily-cash-modal .daily-cash-value-row { margin-top: 4px; }
+    .daily-cash-modal .daily-cash-entries { margin: 4px 0; }
+}
+@media (min-width: 600px) and (max-width: 900px) and (max-height: 520px) {
+    .daily-cash-modal .account-create-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; }
+    .daily-cash-modal .daily-cash-settlements { padding: 6px; }
+    .daily-cash-modal .daily-cash-entries { margin: 2px 0; }
+    .daily-cash-modal .daily-cash-entry-pages .icon-button { width: 22px; height: 22px; }
+    .daily-cash-modal .daily-cash-settlements > .installment-total { margin-top: 2px; padding-top: 2px; padding-bottom: 2px; line-height: 1.2; }
+}

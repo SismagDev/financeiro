@@ -1236,7 +1236,7 @@ function App() {
                         }}
                         onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) { event.preventDefault(); void requestCloseModal(); } }}
                     >
-                        <section className={`modal-card ${modal === "daily-cash" ? "daily-cash-modal" : ""} ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "daily-cash" ? "Caixa Diário" : modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "daily-cash" ? "account-new-modal daily-cash-modal" : ""} ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "daily-cash" ? "Caixa Diário" : modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1276,7 +1276,7 @@ function App() {
                                 </button>
                             </div>
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
-                            {modal === "daily-cash" ? <DailyCashForm key={formCompanyId} lookups={formLookups} loadOptions={loadFormOptions} busy={busy} onSave={saveDailyCash} onCancel={() => void requestCloseModal()} /> : modal === "details" && currentAccount ? (
+                            {modal === "daily-cash" ? <div className="daily-cash-content"><DailyCashForm key={formCompanyId} lookups={formLookups} loadOptions={loadFormOptions} busy={busy} onSave={saveDailyCash} onCancel={() => void requestCloseModal()} /></div> : modal === "details" && currentAccount ? (
                                 <div className="record-form">
                                     <p><b>{currentAccount.pessoa_id && <>{displayValue("pessoa_id", currentAccount.pessoa_id)} · </>}{String(currentAccount.descricao)}</b></p>
                                     <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}

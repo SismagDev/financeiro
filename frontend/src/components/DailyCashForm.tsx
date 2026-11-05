@@ -19,9 +19,13 @@ export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel }: 
     const [payment, setPayment] = useState<BankPayment>({ banco_id: "", forma_pagamento_id: "" });
     const [amount, setAmount] = useState("");
     const [settlements, setSettlements] = useState<(BankPayment & { id: string; valor: number })[]>([]);
+    const [settlementPage, setSettlementPage] = useState(1);
     const [error, setError] = useState("");
     const settled = settlements.reduce((sum, row) => sum + Math.round(row.valor * 100), 0);
     const remaining = Math.round(Number(total) * 100) - settled;
+    const pageCount = Math.max(1, Math.ceil(settlements.length / 2));
+    const currentPage = Math.min(settlementPage, pageCount);
+    const visibleSettlements = settlements.slice((currentPage - 1) * 2, currentPage * 2);
     const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     function addSettlement() {
         const value = Math.round(Number(amount) * 100);
@@ -29,6 +33,7 @@ export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel }: 
             setError("Selecione banco e forma de pagamento e informe um valor positivo até o saldo disponível."); return;
         }
         setSettlements(rows => [...rows, { ...payment, id: crypto.randomUUID(), valor: value / 100 }]);
+        setSettlementPage(Math.ceil((settlements.length + 1) / 2));
         setPayment({ banco_id: "", forma_pagamento_id: "" }); setAmount(""); setError("");
     }
     function submit(event: FormEvent<HTMLFormElement>) {
@@ -50,15 +55,22 @@ export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel }: 
             </div></div>
             <aside className="account-installment-panel daily-cash-settlements" aria-label="Baixas">
                 <h3><Icon name="wallet" /> Baixas</h3>
-                <div className="form-grid">
+                <div className="form-grid daily-cash-bank-fields">
                     <BankPaymentFields banks={lookups.bancos || []} paymentForms={lookups.formas || []} loadOptions={loadOptions} value={payment} onChange={setPayment} required={false} disabled={busy} />
-                    <label className="form-field full-field">Valor da baixa<input type="number" min="0.01" step="0.01" value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} /></label>
                 </div>
-                <button type="button" className="button button-secondary" disabled={busy || remaining <= 0} onClick={addSettlement}><Icon name="plus" size={16} /> Adicionar baixa</button>
-                <ul className="daily-cash-entries">{settlements.map(row => <li key={row.id}>
+                <div className="daily-cash-value-row">
+                    <label className="form-field">Valor da baixa<input type="number" min="0.01" step="0.01" value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} /></label>
+                    <button type="button" className="button button-secondary daily-cash-add" disabled={busy || remaining <= 0} onClick={addSettlement}><Icon name="plus" size={16} /> Adicionar baixa</button>
+                </div>
+                <ul className="daily-cash-entries">{visibleSettlements.map(row => <li key={row.id}>
                     <span>{String(lookups.formas?.find(form => form.id === row.forma_pagamento_id)?.descricao || "Forma de pagamento")}<small>{String(lookups.bancos?.find(bank => bank.id === row.banco_id)?.descricao || "Banco")}</small></span>
                     <b>{money(Math.round(row.valor * 100))}</b><button type="button" className="icon-button" aria-label="Remover baixa" disabled={busy} onClick={() => setSettlements(rows => rows.filter(item => item.id !== row.id))}><Icon name="close" size={16} /></button>
                 </li>)}</ul>
+                {pageCount > 1 && <div className="daily-cash-entry-pages" role="group" aria-label="Páginas de baixas">
+                    <button type="button" className="icon-button" aria-label="Baixas anteriores" disabled={busy || currentPage === 1} onClick={() => setSettlementPage(currentPage - 1)}>←</button>
+                    <span>{(currentPage - 1) * 2 + 1}–{Math.min(currentPage * 2, settlements.length)} de {settlements.length} baixas</span>
+                    <button type="button" className="icon-button" aria-label="Próximas baixas" disabled={busy || currentPage === pageCount} onClick={() => setSettlementPage(currentPage + 1)}>→</button>
+                </div>}
                 <div className="installment-total">Total baixado <b>{money(settled)}</b></div>
                 <div className="installment-total">Saldo <b>{money(remaining)}</b></div>
             </aside>

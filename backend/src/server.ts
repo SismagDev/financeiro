@@ -16,6 +16,7 @@ import planosContasRoutes from "./planos_contas/planos_contas.routes";
 import movimentacoesRoutes from "./movimentacoes/movimentacoes.routes";
 import recebimentosRoutes from "./recebimentos/recebimentos.routes";
 import caixaRoutes from "./caixa/caixa.routes";
+import tiposCaixaDiarioRoutes from "./caixa/tipos-caixa-diario.routes";
 import adminRoutes from "./admin/admin.routes";
 import importacaoRoutes from "./importacao/importacao.routes";
 
@@ -95,6 +96,7 @@ async function startServer() {
     app.use("/movimentacoes", movimentacoesRoutes);
     app.use("/recebimentos", recebimentosRoutes);
     app.use("/caixa", caixaRoutes);
+    app.use("/tipos-caixa-diario", tiposCaixaDiarioRoutes);
     app.use("/admin", adminRoutes);
     app.use("/importacao", importacaoRoutes);
 

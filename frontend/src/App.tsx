@@ -2,6 +2,7 @@ import { useMessageBox } from "./hooks/useMessageBox";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
+import { DailyCashForm, type DailyCashValues } from "./components/DailyCashForm";
 import { CompanySelect } from "./components/CompanySelect";
 import { companyRows, toggleCompany } from "./utils/companies";
 import { netAmount, remainingAmount, settlementPrincipal } from "./utils/accounts";
@@ -247,7 +248,7 @@ function App() {
     const [cashInitial, setCashInitial] = useState(0);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | null>(null);
+    const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | "daily-cash" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     const [pendingSettlements, setPendingSettlements] = useState<Row[]>([]);
     const [editedAmounts, setEditedAmounts] = useState<Row | null>(null);
@@ -259,7 +260,7 @@ function App() {
         formVersion.current++;
         initialAccountForm.current = null; accountForm.current = null;
         setPendingSettlements([]); setEditedAmounts(null);
-        if (next === "create") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
+        if (next === "create" || next === "daily-cash") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
@@ -484,11 +485,12 @@ function App() {
 
     const fetchOptions = useCallback(async (source: string, query: string, nextPage: number, ids: string[], version: number) => {
         const descriptions = source === "descricoes" || source.startsWith("descricoes:");
-        const key = source.startsWith("planos:") ? "planos" : source === "formasAtivas" ? "formas" : descriptions ? "lancamentos" : source;
+        const key = source.startsWith("planos:") ? "planos" : source === "formasAtivas" || source.startsWith("formasBanco:") ? "formas" : descriptions ? "lancamentos" : source;
         const endpoint = resources.find(item => item.key === key)?.endpoint;
         if (!endpoint || !ids.length) return { options: [], hasMore: false };
         const params = new URLSearchParams({ pagina: String(nextPage), tamanho: "50", empresas: ids.join(","), busca: query, opcoes: descriptions ? "descricoes" : "true" });
-        if (source === "formasAtivas") params.set("ativo", "true");
+        if (source === "formasAtivas" || source.startsWith("formasBanco:")) params.set("ativo", "true");
+        if (source.startsWith("formasBanco:")) params.set("banco_id", source.slice("formasBanco:".length));
         if (source.startsWith("planos:")) params.set("tipo_conta", source.split(":")[1]);
         if (source.startsWith("descricoes:")) params.set("plano_conta_id", source.slice("descricoes:".length));
         const result = await api(endpoint + "?" + params, {}, ids[0]);
@@ -496,7 +498,8 @@ function App() {
         setLookups(previous => ({ ...previous, [key]: Array.from(new Map([...(previous[key] || []), ...result.data].map(row => [String(row.empresa_id) + ":" + row.id, row])).values()) }));
         const options: [string, string][] = result.data.map((row: Row) => [String(descriptions ? String(row.descricao).trim() : row.id),
             source === "lancamentos" ? [row.pessoa_nome, row.descricao, row.tipo === "receber" ? "Recebimento" : "Pagamento"].filter(Boolean).join(" · ") : String(row.nome || row.descricao || row.id)]);
-        return { options, hasMore: result.meta.pagina < result.meta.paginas };
+        return { options, hasMore: result.meta.pagina < result.meta.paginas,
+            details: key === "formas" ? Object.fromEntries(result.data.map((row: Row) => [String(row.id), String(row.banco_descricao || "Sem banco")])) : undefined };
     }, []);
     const loadFormOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, formCompanyId ? [formCompanyId] : [], formVersion.current), [fetchOptions, formCompanyId]);
     const loadFilterOptions: OptionLoader = useCallback((source, query, nextPage) => fetchOptions(source, query, nextPage, scopeKey ? scopeKey.split(",") : [], formVersion.current), [fetchOptions, scopeKey]);
@@ -633,6 +636,7 @@ function App() {
             delete payload.parcelas;
             let settlementEndpoint = "";
             if (resource.key === "baixas") {
+                payload.banco_id = String(form.get("banco_id") || "");
                 const account = (lookups.lancamentos || []).find(item => item.id === payload.lancamento_id);
                 const origin = editing ? selectedRow.origem : account?.tipo === "receber" ? "recebimentos" : "movimentacoes";
                 if (!editing && !account) throw new Error("Selecione a conta para registrar a baixa.");
@@ -657,7 +661,7 @@ function App() {
                     body: JSON.stringify({
                         ...payload,
                         ...(editing && resource.key === "lancamentos" && pendingSettlements.length ? { baixas_pendentes: pendingSettlements.map(row => ({
-                            id: row.id, forma_pagamento_id: row.forma_pagamento_id, valor: row.valor, data: row.data, desconto: row.desconto, acrescimo: row.acrescimo,
+                            id: row.id, banco_id: row.banco_id, forma_pagamento_id: row.forma_pagamento_id, valor: row.valor, data: row.data, desconto: row.desconto, acrescimo: row.acrescimo,
                         })) } : {}),
                         ...(customInstallments ? { parcelas_personalizadas: customInstallments } : {}),
                         ...(!editing && resource.key === "lancamentos" && parcelas > 1
@@ -702,7 +706,21 @@ function App() {
     }
 
 
-    async function registerLaunchSettlement(account: Row, values: { forma_pagamento_id: string; valor: number; data: string; desconto: number; acrescimo: number }) {
+    async function saveDailyCash(values: DailyCashValues) {
+        if (busy || !formCompanyId) return;
+        const version = formVersion.current;
+        setBusy(true);
+        try {
+            await api("/lancamentos/caixa-diario", { method: "POST", body: JSON.stringify(values) }, formCompanyId);
+            if (version !== formVersion.current) return;
+            setModal(null); setSelectedRow(null);
+            notify("Caixa Diário e baixas gravados.");
+            await reloadCurrent();
+        } catch (error) { notify(error instanceof Error ? error.message : "Não foi possível gravar o Caixa Diário.", "error"); }
+        finally { setBusy(false); }
+    }
+
+    async function registerLaunchSettlement(account: Row, values: { banco_id?: string; forma_pagamento_id: string; valor: number; data: string; desconto: number; acrescimo: number }) {
         await api(`/lancamentos/${account.id}/baixar`, { method: "POST", body: JSON.stringify(values) }, String(account.empresa_id));
         await reloadCurrent();
     }
@@ -731,7 +749,7 @@ function App() {
             if (!Number.isFinite(amount) || amount <= 0 || principal <= 0 || principal > remainingAmount(editAccount!, dashboardData) + 0.005) {
                 notify("Confira o valor e o saldo disponível para a baixa.", "error"); return;
             }
-            setPendingSettlements(rows => [...rows, { id: crypto.randomUUID(), pendente: true, forma_pagamento_id: String(values.forma_pagamento_id),
+            setPendingSettlements(rows => [...rows, { id: crypto.randomUUID(), pendente: true, banco_id: String(values.banco_id), forma_pagamento_id: String(values.forma_pagamento_id),
                 forma_pagamento_descricao: (formLookups.formas || []).find(row => row.id === values.forma_pagamento_id)?.descricao,
                 valor: amount, desconto: discount, acrescimo: surcharge, data: String(values.data), data_recebimento: String(values.data) }]);
             setSettlementOverlay(false);
@@ -740,7 +758,7 @@ function App() {
         setBusy(true);
         try {
             await registerLaunchSettlement(selectedRow, {
-                forma_pagamento_id: String(values.forma_pagamento_id), valor: Number(values.valor), data: String(values.data),
+                banco_id: String(values.banco_id), forma_pagamento_id: String(values.forma_pagamento_id), valor: Number(values.valor), data: String(values.data),
                 desconto: Number(values.desconto || 0), acrescimo: Number(values.acrescimo || 0),
             });
             if (activeCompanyId.current !== company.id) return;
@@ -871,6 +889,7 @@ function App() {
         { key: "formas", title: "Formas de pagamento", icon: "card", section: "CADASTROS" },
         { key: "bancos", title: "Bancos", icon: "bank", section: "CADASTROS" },
         { key: "planos", title: "Planos de contas", icon: "grid", section: "CADASTROS" },
+        { key: "tiposCaixa", title: "Tipos de caixa diário", icon: "grid", section: "CADASTROS" },
         { key: "baixas", title: "Baixas", icon: "check", section: "FINANCEIRO" },
     ];
     const grouped = ["WORKSPACE", "FINANCEIRO", "CADASTROS"];
@@ -1016,7 +1035,7 @@ function App() {
                         aria-label="Fechar navegação"
                     />
                 )}
-                <main className={`main-area ${["pessoas", "planos", "bancos", "formas"].includes(page) ? "bounded-list-area" : ""}`} inert={Boolean(modal)}>
+                <main className={`main-area ${["pessoas", "planos", "bancos", "formas", "tiposCaixa"].includes(page) ? "bounded-list-area" : ""}`} inert={Boolean(modal)}>
                     <header className="topbar">
                         <div className="topbar-left">
                             <button
@@ -1169,6 +1188,7 @@ function App() {
                                 onSort={key => setSorting({ page, key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
                                 onPageChange={next => setPagination({ key: filterKey, page: next })}
                                 loadOptions={loadFilterOptions}
+                                onDailyCash={() => setModal("daily-cash")}
                                 loadQuickSettlementOptions={loadQuickSettlementOptions}
                                 onQuickSettle={quickSettleLaunch}
                                 busy={busy}
@@ -1216,7 +1236,7 @@ function App() {
                         }}
                         onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) { event.preventDefault(); void requestCloseModal(); } }}
                     >
-                        <section className={`modal-card ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "daily-cash" ? "daily-cash-modal" : ""} ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "daily-cash" ? "Caixa Diário" : modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1233,7 +1253,7 @@ function App() {
                                                 : "NOVO CADASTRO"}
                                     </span>
                                     <h2>
-                                        {modal === "company"
+                                        {modal === "daily-cash" ? "Caixa Diário" : modal === "company"
                                             ? "Cadastre sua empresa"
                                             : modal === "company-edit"
                                               ? "Configurações da empresa"
@@ -1249,14 +1269,14 @@ function App() {
                                                 : `${resource?.key === "baixas" || resource?.key === "pessoas" ? "Nova" : "Novo"} ${resource?.singular}`}
                                     </h2>
                                 </div>
-                                {modal === "create" && resource?.key === "lancamentos" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
+                                {(modal === "daily-cash" || modal === "create" && resource?.key === "lancamentos") && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
                                     value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
                                 <button className="icon-button" aria-label="Fechar cadastro" onClick={() => void requestCloseModal()}>
                                     <Icon name="close" />
                                 </button>
                             </div>
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
-                            {modal === "details" && currentAccount ? (
+                            {modal === "daily-cash" ? <DailyCashForm key={formCompanyId} lookups={formLookups} loadOptions={loadFormOptions} busy={busy} onSave={saveDailyCash} onCancel={() => void requestCloseModal()} /> : modal === "details" && currentAccount ? (
                                 <div className="record-form">
                                     <p><b>{currentAccount.pessoa_id && <>{displayValue("pessoa_id", currentAccount.pessoa_id)} · </>}{String(currentAccount.descricao)}</b></p>
                                     <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
@@ -1296,7 +1316,7 @@ function App() {
                                     </div>
                                 </form>
                             ) : modal === "settle" && currentAccount ? (
-                                <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
+                                <SettlementForm banks={formLookups.bancos || []} loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(currentAccount, dashboardData)}
                                     busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => void requestCloseModal()} />
                             ) : (
                                 <div className={modal === "edit" && resource?.key === "lancamentos" ? "account-edit-layout" : undefined}>
@@ -1355,7 +1375,7 @@ function App() {
                         <div className="modal-head"><h2>{currentAccount.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento"}</h2>
                             <button type="button" className="icon-button" aria-label="Fechar baixa" autoFocus disabled={busy} onClick={() => setSettlementOverlay(false)}><Icon name="close" /></button>
                         </div>
-                        <SettlementForm loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(modal === "edit" && editAccount ? editAccount : currentAccount, dashboardData)}
+                        <SettlementForm banks={formLookups.bancos || []} loadOptions={loadFormOptions} account={currentAccount} paymentForms={formLookups.formas || []} remaining={remainingAmount(modal === "edit" && editAccount ? editAccount : currentAccount, dashboardData)}
                             busy={busy} formatValue={displayValue} onSubmit={settleLaunch} onCancel={() => setSettlementOverlay(false)} />
                     </section>
                 </div>}

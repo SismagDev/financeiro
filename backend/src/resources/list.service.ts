@@ -34,7 +34,7 @@ export const settlementsSql = (scope = "$1", cash = false) => ["movimentacoes", 
         ${receiving ? "s.data_recebimento" : "NULL::date"} AS data_recebimento,
         ${receiving ? "NULL::date" : "s.data_movimentacao"} AS data_movimentacao,
         l.pessoa_id, l.descricao, l.tipo AS categoria, p.nome AS pessoa_nome, fp.descricao AS forma_pagamento_descricao,
-        b.descricao AS instituicao
+        fp.banco_id, b.descricao AS banco_descricao, b.descricao AS instituicao
         FROM ${table} s JOIN lancamentos l ON l.id = s.lancamento_id AND l.empresa_id = s.empresa_id
         ${cash ? "JOIN empresas e ON e.id = s.empresa_id" : ""}
         LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id

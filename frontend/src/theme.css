@@ -33,6 +33,24 @@
     background: var(--bg);
 }
 
+.daily-cash-button { background: var(--info); color: #fff; }
+.daily-cash-button:hover { background: #244d82; }
+.daily-cash-modal { width: min(1000px, calc(100vw - 32px)); }
+.daily-cash-modal .account-create-layout > * { min-width: 0; }
+.daily-cash-modal .company-form-field { max-width: 240px; margin: 0; }
+.daily-cash-settlements .form-grid { margin-bottom: 12px; }
+.daily-cash-settlements .installment-total { display: flex; justify-content: space-between; gap: 8px; }
+.daily-cash-entries { list-style: none; padding: 0; margin: 12px 0; max-height: 220px; overflow: auto; }
+.daily-cash-entries li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.daily-cash-entries li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.daily-cash-entries small { display: block; color: var(--muted); }
+.daily-cash-entries b { white-space: nowrap; }
+.quick-settlement .combobox-results { width: min(300px, 78vw); left: auto; right: 0; }
+.table-wrap:has(.quick-settlement .combobox-results) { padding-bottom: 220px; }
+.quick-settlement .combobox-results button.combobox-two-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+.combobox-two-columns > :is(span, small) { min-width: 0; overflow-wrap: anywhere; }
+.combobox-two-columns > small { color: var(--muted); font-size: 11px; }
+
 body, .app-shell, .admin-page, .onboarding, .full-loader { background: var(--bg); color: var(--ink); }
 ::selection { color: #103e47; background: #bce9dd; }
 button, input, select, textarea { accent-color: var(--accent); }

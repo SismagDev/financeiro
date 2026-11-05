@@ -17,6 +17,7 @@ import { formatarErroZod } from "../utils/zod";
 import { createSettlement, SettlementError } from "./settlement.service";
 
 import { createLaunches, updateLaunch } from "./lancamentos.service";
+import { createDailyCash } from "../caixa/caixa-diario.service";
 import { adjustmentSchema, customInstallmentsSchema, settlementAdjustmentShape, settlementConfirmationShape } from "./launch-values";
 
 const competencia = z.string().date()
@@ -96,6 +97,19 @@ const router = Router();
 router.use(attachCurrentUser, requireEmpresa);
 const writeAccess = requireRole("admin", "contador", "comum");
 
+router.post("/caixa-diario", writeAccess, async (req: Request, res: Response) => {
+    const parsed = z.object({ data, tipo_caixa_diario_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0),
+        observacoes: z.string().trim().max(5000).nullable().optional(),
+        baixas: z.array(z.object({ banco_id: z.string().uuid(), forma_pagamento_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0) }).strict()).max(500),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
+    try { return res.status(201).json(await createDailyCash(req.empresaId!, parsed.data)); }
+    catch (error) {
+        if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error));
+        if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
+        return res.status(400).json({ message: "Não foi possível registrar o Caixa Diário" });
+    }
+});
 
 const createSchema = schema.create.extend({ forma_pagamento_id: z.string().uuid().optional(), parcelas_personalizadas: customInstallmentsSchema.optional() });
 const installmentSchema = createSchema.extend({
@@ -121,7 +135,7 @@ for (const [path, validator] of [["/", createSchema], ["/parcelado", installment
 
 router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
-    const body = z.object({ forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional(), ...settlementConfirmationShape, ...settlementAdjustmentShape }).strict().safeParse(req.body);
+    const body = z.object({ banco_id: z.string().uuid().optional(), forma_pagamento_id: z.string().uuid(), valor: z.coerce.number().positive(), data: data.optional(), ...settlementConfirmationShape, ...settlementAdjustmentShape }).strict().safeParse(req.body);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
     if (!body.success) return res.status(400).json(formatarErroZod(body.error));
 
@@ -137,6 +151,7 @@ router.post("/:id/baixar", writeAccess, async (req: Request, res: Response) => {
         const settlement = await createSettlement(client, req.empresaId!, settlementTable, {
             lancamentoId: id.data,
             formaPagamentoId: body.data.forma_pagamento_id,
+            bancoId: body.data.banco_id,
             valor: body.data.valor,
             desconto: body.data.desconto,
             acrescimo: body.data.acrescimo,
@@ -157,7 +172,7 @@ router.patch("/:id", writeAccess, async (req: Request, res: Response) => {
     const id = z.string().uuid().safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ message: "ID inválido" });
     const parsed = schema.patch.extend({ baixas_pendentes: z.array(z.object({
-        id: z.string().uuid(), forma_pagamento_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0),
+        id: z.string().uuid(), banco_id: z.string().uuid().optional(), forma_pagamento_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0),
         data, ...settlementAdjustmentShape,
     }).strict()).max(500).refine(rows => new Set(rows.map(row => row.id)).size === rows.length, "Baixas repetidas").optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));

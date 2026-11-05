@@ -19,10 +19,12 @@ type Props = {
     emptyLabel?: string;
     source?: string;
     loadOptions?: OptionLoader;
+    optionDetails?: Record<string, string>;
+    twoColumns?: boolean;
 };
 
 export function Combobox({ options, name, value, defaultValue = "", onChange, required, disabled,
-    allowCustom, placeholder = "Selecione uma opção", label, maxLength, onCreate, filterOption, emptyLabel = "Não selecionado", source, loadOptions }: Props) {
+    allowCustom, placeholder = "Selecione uma opção", label, maxLength, onCreate, filterOption, emptyLabel = "Não selecionado", source, loadOptions, optionDetails, twoColumns }: Props) {
     const id = useId();
     const input = useRef<HTMLInputElement>(null);
     const root = useRef<HTMLDivElement>(null);
@@ -30,7 +32,7 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
     const [query, setQuery] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(-1);
-    const [remote, setRemote] = useState<{ key: string; options: [string, string][]; page: number; hasMore: boolean } | null>(null);
+    const [remote, setRemote] = useState<{ key: string; options: [string, string][]; page: number; hasMore: boolean; details?: Record<string, string> } | null>(null);
     const [pending, setPending] = useState(false);
     const [error, setError] = useState("");
     const [retry, setRetry] = useState(0);
@@ -44,6 +46,7 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
             void loadOptions(source, query ?? "", requestedPage).then(result => {
                 if (!active) return;
                 setRemote(previous => ({ key: remoteKey, page: requestedPage, hasMore: result.hasMore,
+                    details: { ...(requestedPage > 1 && previous?.key === remoteKey ? previous.details : {}), ...result.details },
                     options: Array.from(new Map([...(requestedPage > 1 && previous?.key === remoteKey ? previous.options : []), ...result.options]).entries()) }));
             }).catch(error => { if (active) setError(error instanceof Error ? error.message : "Não foi possível carregar opções."); })
                 .finally(() => { if (active) setPending(false); });
@@ -114,8 +117,8 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
             <div id={id + "-results"} role="listbox" aria-label={label || placeholder}>
                 {!required && <button type="button" role="option" aria-selected={!current} onClick={() => choose("")}>{emptyLabel}</button>}
                 {matches.map(([key, text], index) => <button type="button" role="option" aria-selected={current === key}
-                    className={index === active ? "active" : ""} id={id + "-option-" + index} key={key}
-                    onClick={() => choose(key)}>{text}</button>)}
+                    className={[index === active ? "active" : "", twoColumns ? "combobox-two-columns" : ""].filter(Boolean).join(" ")} id={id + "-option-" + index} key={key}
+                    onClick={() => choose(key)}>{twoColumns ? <><span title={text}>{text}</span><small title={remote?.details?.[key] ?? optionDetails?.[key] ?? "Sem banco"}>{remote?.details?.[key] ?? optionDetails?.[key] ?? "Sem banco"}</small></> : text}</button>)}
             </div>
             {loadingOptions && <span role="status">Carregando...</span>}
             {error && <button type="button" onClick={() => setRetry(value => value + 1)}>{error} Tentar novamente</button>}

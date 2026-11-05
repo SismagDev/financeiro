@@ -16,6 +16,7 @@ export type LaunchInput = {
     parcelas?: number; modo_valor?: "total" | "parcela"; intervalos?: number[];
     parcelas_personalizadas?: { valor: number; data_vencimento: string }[];
     forma_pagamento_id?: string;
+    tipo_caixa_diario_id?: string;
 };
 
 export function installmentCompetence(value: string, index = 0) {
@@ -69,13 +70,13 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
             const result = await client.query<{ id: string }>(
                 `INSERT INTO lancamentos
                     (empresa_id, descricao, valor, tipo, data_vencimento, pessoa_id, banco_id,
-                     grupo_parcelamento_id, numero_parcela, total_parcelas, competencia, plano_conta_id, status, observacoes, num_doc, desconto, acrescimo, id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+                     grupo_parcelamento_id, numero_parcela, total_parcelas, competencia, plano_conta_id, status, observacoes, num_doc, desconto, acrescimo, id, tipo_caixa_diario_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
                 [empresaId, input.descricao, amount.toFixed(2), input.tipo, due.toISOString().slice(0, 10),
                     input.pessoa_id ?? null, input.banco_id ?? null, grupoId, grupoId ? index + 1 : null, grupoId ? parcelas : null,
                     `${installmentCompetence(input.competencia ?? input.data_vencimento, index)}T00:00:00Z`,
                     input.plano_conta_id ?? null, input.status === "cancelado" ? "cancelado" : net === 0 ? "pago" : input.status ?? "pendente",
-                    input.observacoes ?? null, input.num_doc ?? null, desconto.toFixed(2), acrescimo.toFixed(2), importId ?? randomUUID()],
+                    input.observacoes ?? null, input.num_doc ?? null, desconto.toFixed(2), acrescimo.toFixed(2), importId ?? randomUUID(), input.tipo_caixa_diario_id ?? null],
             );
             const id = result.rows[0]!.id;
             ids.push(id);
@@ -91,7 +92,7 @@ export async function createLaunches(empresaId: string, input: LaunchInput, tran
     } finally { if (!transactionClient) client.release(); }
 }
 
-export type PendingSettlement = { id: string; forma_pagamento_id: string; valor: number; data: string; desconto?: number; acrescimo?: number };
+export type PendingSettlement = { id: string; banco_id?: string; forma_pagamento_id: string; valor: number; data: string; desconto?: number; acrescimo?: number };
 
 export async function updateLaunch(empresaId: string, id: string, input: Partial<LaunchInput> & { baixas_pendentes?: PendingSettlement[] }) {
     const client = await pool.connect();
@@ -139,7 +140,7 @@ export async function updateLaunch(empresaId: string, id: string, input: Partial
                 continue;
             }
             await createSettlement(client, empresaId, table, { id: baixa.id, lancamentoId: id, formaPagamentoId: baixa.forma_pagamento_id,
-                valor: baixa.valor, data: baixa.data, desconto: baixa.desconto, acrescimo: baixa.acrescimo });
+                bancoId: baixa.banco_id, valor: baixa.valor, data: baixa.data, desconto: baixa.desconto, acrescimo: baixa.acrescimo });
         }
         await client.query("COMMIT");
         return { id };

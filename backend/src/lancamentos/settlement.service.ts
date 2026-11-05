@@ -6,8 +6,8 @@ import { isHistoricalRecord } from "../utils/access-import";
 export type SettlementKind = "movimentacoes" | "recebimentos";
 type SettlementConfig = { table: SettlementKind; launchType: "pagar" | "receber"; dateColumn: "data_movimentacao" | "data_recebimento" };
 
-type SettlementInput = SettlementConfirmation & SettlementAdjustments & { id?: string; lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
-type SettlementPatch = SettlementConfirmation & { formaPagamentoId?: string; valor?: number; data?: string };
+type SettlementInput = SettlementConfirmation & SettlementAdjustments & { id?: string; bancoId?: string; lancamentoId: string; formaPagamentoId: string; valor: number; data?: string };
+type SettlementPatch = SettlementConfirmation & { bancoId?: string; formaPagamentoId?: string; valor?: number; data?: string };
 
 export class SettlementError extends Error {
     constructor(message: string, readonly status = 400) { super(message); }
@@ -31,14 +31,14 @@ async function findLaunch(client: PoolClient, empresaId: string, lancamentoId: s
     return lancamento;
 }
 
-async function validatePaymentForm(client: PoolClient, empresaId: string, formaPagamentoId: string, source?: "importacao") {
+async function validatePaymentForm(client: PoolClient, empresaId: string, formaPagamentoId: string, source?: "importacao", bancoId?: string) {
     const historical = isHistoricalRecord(empresaId, "formas_pagamento", formaPagamentoId);
     if (historical && source !== "importacao") throw new SettlementError("Forma de pagamento reservada à importação");
     const result = await client.query(
-        `SELECT 1 FROM formas_pagamento WHERE empresa_id = $1 AND id = $2${historical ? "" : " AND ativo = TRUE"}`,
-        [empresaId, formaPagamentoId],
+        `SELECT 1 FROM formas_pagamento WHERE empresa_id = $1 AND id = $2${historical ? "" : " AND ativo = TRUE"}${bancoId ? " AND banco_id = $3 AND EXISTS (SELECT 1 FROM bancos b WHERE b.empresa_id = $1 AND b.id = $3)" : ""}`,
+        bancoId ? [empresaId, formaPagamentoId, bancoId] : [empresaId, formaPagamentoId],
     );
-    if (!result.rowCount) throw new SettlementError("Forma de pagamento não encontrada ou inativa");
+    if (!result.rowCount) throw new SettlementError(bancoId ? "Forma de pagamento não encontrada, inativa ou incompatível com o banco e a empresa" : "Forma de pagamento não encontrada ou inativa");
 }
 
 async function ensureValueFits(
@@ -90,7 +90,7 @@ async function refreshLaunchStatus(client: PoolClient, empresaId: string, lancam
 export async function createSettlement(client: PoolClient, empresaId: string, table: SettlementKind, input: SettlementInput, source?: "importacao") {
     const config = configFor(table);
     const launch = await findLaunch(client, empresaId, input.lancamentoId, config);
-    await validatePaymentForm(client, empresaId, input.formaPagamentoId, source);
+    await validatePaymentForm(client, empresaId, input.formaPagamentoId, source, input.bancoId);
     if (!Number.isFinite(input.valor) || input.valor <= 0) throw new SettlementError("Informe um valor de baixa positivo");
     const desconto = adjustmentSchema.parse(input.desconto ?? 0);
     const acrescimo = adjustmentSchema.parse(input.acrescimo ?? 0);
@@ -123,7 +123,7 @@ export async function updateSettlement(client: PoolClient, empresaId: string, ta
     const launch = await findLaunch(client, empresaId, existing.lancamento_id, config);
     const value = input.valor ?? Number(existing.valor);
     const paymentFormId = input.formaPagamentoId ?? existing.forma_pagamento_id;
-    await validatePaymentForm(client, empresaId, paymentFormId);
+    await validatePaymentForm(client, empresaId, paymentFormId, undefined, input.bancoId);
     if (!Number.isFinite(value) || value <= 0) throw new SettlementError("Informe um valor de baixa positivo");
     const principal = liquidValue({ valor: value, desconto: existing.acrescimo, acrescimo: existing.desconto });
     if (principal <= 0 || Number(existing.desconto || 0) > principal) throw new SettlementError("Confira o valor e os ajustes originais desta baixa");

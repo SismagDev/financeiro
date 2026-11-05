@@ -1,15 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Combobox } from "./Combobox";
+import { BankPaymentFields } from "./BankPaymentFields";
 import type { OptionLoader, Row } from "../types";
 import { liquidSettlementValue } from "../utils/accounts";
 
 type Props = {
-    account: Row; paymentForms: Row[]; remaining: number; busy: boolean;
+    account: Row; banks: Row[]; paymentForms: Row[]; remaining: number; busy: boolean;
     formatValue: (key: string, value: Row[string]) => string;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void;
     loadOptions?: OptionLoader;
 };
-export function SettlementForm({ account, paymentForms, remaining, busy, formatValue, onSubmit, onCancel, loadOptions }: Props) {
+export function SettlementForm({ account, banks, paymentForms, remaining, busy, formatValue, onSubmit, onCancel, loadOptions }: Props) {
     const [base, setBase] = useState(remaining.toFixed(2));
     const [modifier, setModifier] = useState("none");
     const [modifierValue, setModifierValue] = useState("0");
@@ -23,12 +23,7 @@ export function SettlementForm({ account, paymentForms, remaining, busy, formatV
             <b>Saldo em aberto: {formatValue("valor", remaining)}</b>
         </div>
         <div className="form-grid">
-            <label className="form-field full-field">Forma de pagamento
-                <Combobox name="forma_pagamento_id" label="Forma de pagamento" required
-                    defaultValue={String(account.forma_pagamento_id || "")}
-                    source="formasAtivas" loadOptions={loadOptions}
-                    options={paymentForms.filter(item => item.ativo !== false).map(item => [String(item.id), String(item.descricao)])} />
-            </label>
+            <BankPaymentFields banks={banks} paymentForms={paymentForms} loadOptions={loadOptions} disabled={busy} />
             <label className="form-field">Valor do saldo a baixar
                 <input type="number" min="0.01" max={remaining} step="0.01" required value={base} onChange={event => setBase(event.target.value)} />
             </label>

@@ -41,6 +41,7 @@ type Props = {
     formatValue: (key: string, value: Row[string]) => string;
     onSearch: (value: string) => void;
     onCreate: (tipo?: "receber" | "pagar") => void;
+    onDailyCash: () => void;
     onEdit: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
@@ -68,6 +69,7 @@ export function ResourcePage({
     formatValue,
     onSearch,
     onCreate,
+    onDailyCash,
     onEdit,
     onDelete,
     onSettle,
@@ -151,6 +153,7 @@ export function ResourcePage({
                     {companyFilter}
                 </div>
                 {showSettlement ? <div className="account-create-buttons">
+                    <button className="button daily-cash-button" onClick={onDailyCash}><Icon name="wallet" size={18} /> Caixa Diário</button>
                     <button className="button account-receive-button" onClick={() => onCreate("receber")}><Icon name="arrowDown" size={18} /> Receber</button>
                     <button className="button account-pay-button" onClick={() => onCreate("pagar")}><Icon name="arrowUp" size={18} /> Pagar</button>
                 </div> : <button className="button button-primary" onClick={() => onCreate()}>
@@ -371,6 +374,7 @@ export function ResourcePage({
                                             quickSettlement && quickSettlement.row.id === row.id && quickSettlement.row.empresa_id === row.empresa_id ?
                                                 <div className="quick-settlement" ref={quickRoot} key={String(row.id)}>
                                                     <Combobox label="Forma de pagamento da baixa rápida" required disabled={busy}
+                                                        twoColumns optionDetails={Object.fromEntries(paymentForms.map(item => [String(item.id), String(item.banco_descricao || "Sem banco")]))}
                                                         value={quickSettlement.paymentForm} source="formasAtivas"
                                                         loadOptions={quickOptions}
                                                         options={paymentForms.filter(item => item.ativo !== false && item.empresa_id === row.empresa_id)

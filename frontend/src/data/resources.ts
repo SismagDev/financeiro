@@ -2,6 +2,11 @@ import type { Resource } from "../types";
 
 export const resources: Resource[] = [
     {
+        key: "tiposCaixa", title: "Tipos de caixa diário", endpoint: "/tipos-caixa-diario", singular: "tipo de caixa diário", icon: "grid",
+        fields: [{ name: "descricao", label: "Nome", required: true, wide: true }],
+        columns: [["descricao", "Tipo de caixa diário"]],
+    },
+    {
         key: "lancamentos",
         title: "Contas",
         endpoint: "/lancamentos",
@@ -215,6 +220,7 @@ export const pagePaths: Record<string, string> = {
     formas: "/formas-pagamento",
     bancos: "/bancos",
     planos: "/planos-contas",
+    tiposCaixa: "/tipos-caixa-diario",
     baixas: "/baixas",
 };
 

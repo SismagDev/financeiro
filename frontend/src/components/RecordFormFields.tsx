@@ -7,6 +7,7 @@ import { competenceLabel, dateInputValue, localDateInputValue } from "../utils/d
 import type { Field, OptionLoader, Row } from "../types";
 import { AccountValueInput } from "./AccountValue";
 import { useMessageBox } from "../hooks/useMessageBox";
+import { BankPaymentFields } from "./BankPaymentFields";
 
 type Props = { companyId?: string; fields: Field[]; selectedRow: Row | null; lookups: Record<string, Row[]>; editing: boolean; fixedType?: "pagar" | "receber"; children?: ReactNode; onCreatePerson?: (values: Row) => Promise<Row>; loadOptions?: OptionLoader; onReady?: (form: HTMLFormElement) => void; onValueChange?: (values: Row) => void };
 function PersonRoles({ selectedRow }: Pick<Props, "selectedRow">) {
@@ -38,6 +39,7 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
     const grid = useRef<HTMLDivElement>(null);
     useEffect(() => { const form = grid.current?.closest("form"); if (form) onReady?.(form); }, [onReady]);
     const launch = fields.some((field) => field.name === "parcelas");
+    const settlement = fields.some(field => field.name === "lancamento_id");
     const isLancamento = launch && !editing;
     const documentField = fields.find(field => field.name === "num_doc");
     const [due, setDue] = useState(() => isLancamento ? localDateInputValue() : dateInputValue(selectedRow?.data_vencimento));
@@ -64,6 +66,8 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
     }
     const orderedFields = launch ? [...fields.filter(field => field.name === "plano_conta_id"), ...fields.filter(field => field.name !== "plano_conta_id")] : fields;
     const formFields = <div ref={grid} className="form-grid">{orderedFields.filter((field) => !(launch && field.name === "parcelas") && !(field.type === "checkbox" && field.name === "fornecedor") && !(launch && field.name === "banco_id")).map((field) => {
+        if (settlement && field.name === "forma_pagamento_id") return <BankPaymentFields key={"payment:" + companyId} banks={lookups.bancos || []} paymentForms={lookups.formas || []} loadOptions={loadOptions}
+            initial={{ banco_id: String(selectedRow?.banco_id || ""), forma_pagamento_id: String(selectedRow?.forma_pagamento_id || "") }} />;
         if (launch && editing && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={String(selectedRow?.tipo || "")} />;
         if (isLancamento && fixedType && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={fixedType} />;
         if (launch && field.name === "num_doc") return null;

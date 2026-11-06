@@ -434,6 +434,19 @@ export function ResourcePage({
                         <small>Saldo a receber</small>
                         <b>{formatValue("valor", totals.receber)}</b>
                     </div>
+                    <details className="launch-summary-details">
+                        <summary><span className="summary-expand">Expandir totais</span><span className="summary-collapse">Recolher totais</span></summary>
+                        <div className="launch-summary-expanded">
+                            <div>
+                                <small>Pago + a pagar</small>
+                                <b>{formatValue("valor", Number(meta.pago || 0) + totals.pagar)}</b>
+                            </div>
+                            <div>
+                                <small>Recebido + a receber</small>
+                                <b>{formatValue("valor", Number(meta.recebido || 0) + totals.receber)}</b>
+                            </div>
+                        </div>
+                    </details>
                 </section>
             )}
         </>

@@ -46,22 +46,23 @@ export const settlementsSql = (scope = "$1", cash = false) => ["movimentacoes", 
 
 const launchColumns = `SELECT l.*, p.nome AS pessoa_nome, pc.descricao AS plano_conta_descricao,
     GREATEST(0, l.valor - COALESCE(l.desconto, 0) + COALESCE(l.acrescimo, 0) - COALESCE(s.total, 0)) AS saldo,
-    COALESCE(s.total, 0) AS total_baixado, COALESCE(s.quantidade, 0) AS quantidade_baixas, s.data_ultima_baixa
+    COALESCE(s.total, 0) AS total_baixado, COALESCE(s.total_liquido, 0) AS total_baixado_liquido,
+    COALESCE(s.quantidade, 0) AS quantidade_baixas, s.data_ultima_baixa
     FROM lancamentos l LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id
     LEFT JOIN planos_contas pc ON pc.id = l.plano_conta_id AND pc.empresa_id = l.empresa_id`;
 const launchesSql = `${launchColumns}
-    LEFT JOIN (SELECT empresa_id, lancamento_id, SUM(valor) AS total, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa
-        FROM (SELECT empresa_id, lancamento_id, valor + desconto - acrescimo AS valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = ANY($1::uuid[])
-              UNION ALL SELECT empresa_id, lancamento_id, valor + desconto - acrescimo, data_recebimento FROM recebimentos WHERE empresa_id = ANY($1::uuid[])) s
+    LEFT JOIN (SELECT empresa_id, lancamento_id, SUM(valor) AS total, SUM(valor_liquido) AS total_liquido, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa
+        FROM (SELECT empresa_id, lancamento_id, valor + desconto - acrescimo AS valor, valor AS valor_liquido, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = ANY($1::uuid[])
+              UNION ALL SELECT empresa_id, lancamento_id, valor + desconto - acrescimo, valor, data_recebimento FROM recebimentos WHERE empresa_id = ANY($1::uuid[])) s
         GROUP BY empresa_id, lancamento_id) s ON s.empresa_id = l.empresa_id AND s.lancamento_id = l.id
     WHERE l.empresa_id = ANY($1::uuid[])`;
 
 // Nas listagens os filtros de conta reduzem os lançamentos antes de consultar suas baixas.
 // O dashboard mantém a agregação por empresa para consultar todo o conjunto uma única vez.
 const launchesListSql = `${launchColumns} LEFT JOIN LATERAL (
-    SELECT SUM(valor) AS total, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa FROM (
-        SELECT valor + desconto - acrescimo AS valor, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
-        UNION ALL SELECT valor + desconto - acrescimo, data_recebimento FROM recebimentos WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
+    SELECT SUM(valor) AS total, SUM(valor_liquido) AS total_liquido, COUNT(*) AS quantidade, MAX(data) AS data_ultima_baixa FROM (
+        SELECT valor + desconto - acrescimo AS valor, valor AS valor_liquido, data_movimentacao AS data FROM movimentacoes WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
+        UNION ALL SELECT valor + desconto - acrescimo, valor, data_recebimento FROM recebimentos WHERE empresa_id = l.empresa_id AND lancamento_id = l.id
     ) s) s ON TRUE WHERE l.empresa_id = ANY($1::uuid[])`;
 
 export function buildList(config: Config, query: ListQuery, ids: string[], exact: Record<string, unknown> = {}) {
@@ -161,7 +162,9 @@ export async function listRecords(config: Config, query: ListQuery, ids: string[
     const paginated = query.pagina !== undefined || query.tamanho !== undefined;
     const limit = paginated ? `LIMIT ${size} OFFSET ((SELECT pagina FROM meta) - 1) * ${size}` : "";
     const summary = launches && !query.opcoes ? `, COALESCE(SUM(saldo) FILTER (WHERE tipo = 'pagar' AND status NOT IN ('pago','cancelado')),0) AS pagar,
-        COALESCE(SUM(saldo) FILTER (WHERE tipo = 'receber' AND status NOT IN ('pago','cancelado')),0) AS receber`
+        COALESCE(SUM(saldo) FILTER (WHERE tipo = 'receber' AND status NOT IN ('pago','cancelado')),0) AS receber,
+        COALESCE(SUM(total_baixado_liquido) FILTER (WHERE tipo = 'pagar' AND status <> 'cancelado'),0) AS pago,
+        COALESCE(SUM(total_baixado_liquido) FILTER (WHERE tipo = 'receber' AND status <> 'cancelado'),0) AS recebido`
         : config.table === "pessoas" ? ", COUNT(*) FILTER (WHERE NOT COALESCE(cliente,FALSE) AND NOT COALESCE(fornecedor,FALSE))::int AS sem_vinculo" : "";
     const cashSummary = cash ? ", COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END),0) AS movimento" : "";
     const cashColumns = cash ? `, data_baixa::text AS data, CASE WHEN origem = 'recebimentos' THEN 'Entrada' ELSE 'Saída' END AS tipo_caixa,

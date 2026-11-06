@@ -10,6 +10,7 @@
     --bg: #f0f6f4;
     --shadow: 0 3px 12px #103e4709;
     --control-border: #9ebeb7;
+    --control-ink: #203539;
     --panel-border: #c1d9d2;
     --accent: #087e74;
     --accent-hover: #07665f;
@@ -97,11 +98,12 @@ button:disabled { cursor: not-allowed; }
 .text-button, .link-button, .quick-arrow { color: var(--accent-hover); }
 .form-field, .admin-user-form label, .admin-company-form label, .inline-filters > label { color: var(--ink); }
 .field-hint, .settle-hint, .optional-label { color: var(--muted); }
+input:not([type=checkbox]):not([type=radio]), textarea, select { color: var(--control-ink); }
 .form-field input:not([type=checkbox]):not([type=radio]), .form-field textarea, .form-field select,
 .auth-card input, .search-box, .inline-filters input:not([type=checkbox]), .admin-search,
 .combobox .combobox-control input, .company-filter select, .company-form-field select,
 .account-create-modal :is(input:not([type=checkbox]):not([type=radio]), textarea, select, .combobox-control) {
-    border-color: var(--control-border); color: var(--ink); background-color: #fff;
+    border-color: var(--control-border); color: var(--control-ink); background-color: #fff;
 }
 input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .form-field input::placeholder, .search-box input::placeholder { color: #647d81; opacity: 1; }
@@ -112,7 +114,7 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .combobox-clear, .search-clear { color: var(--muted); }
 .combobox-clear:hover, .search-clear:hover { background: var(--accent-soft); color: var(--accent-hover); }
 .company-filter, .zoom-controls output, .zoom-controls button { color: var(--accent-hover); }
-.search-box input, .search-input input { color: var(--ink); }
+.search-box input, .search-input input { color: var(--control-ink); }
 .form-field :is(input, textarea, select):disabled, .combobox-control input:disabled { background: #edf3f0; color: #526c65; }
 .form-field :is(input, textarea, select)[aria-invalid=true], input[aria-invalid=true] { border-color: var(--danger); }
 .role-choice { border-color: var(--panel-border); background: #fff; }
@@ -186,8 +188,15 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .quick-link:hover { background: #f0f8f4; }
 .quick-link b { color: var(--ink); }
 .quick-link small, .chart-y, .bar-group, .chart-legend, .dashboard-year-filter { color: var(--muted); }
-.launch-summary { background: #e6f3ed; border-color: #a7cdbf; }
+.launch-summary { background: #e6f3ed; border-color: #a7cdbf; flex-wrap: wrap; }
 .launch-summary > span { color: var(--accent-hover); }
+.launch-summary-details { flex-basis: 100%; }
+.launch-summary-details summary { width: fit-content; cursor: pointer; color: var(--accent-hover); font-size: 12px; font-weight: 600; }
+.launch-summary-details summary:focus-visible { outline: 3px solid var(--control-border); outline-offset: 3px; }
+.launch-summary-details .summary-collapse, .launch-summary-details[open] .summary-expand { display: none; }
+.launch-summary-details[open] .summary-collapse { display: inline; }
+.launch-summary .launch-summary-expanded { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 16px 28px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
+.launch-summary-expanded small { color: var(--muted); }
 
 /* Modais, formulários e feedbacks usam a mesma paleta das páginas. */
 .modal-card, .account-create-modal { background: #fff; border: 1px solid var(--panel-border); box-shadow: 0 18px 60px #103e472e; }
@@ -237,7 +246,7 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .account-new-modal .installment-preview :is(caption, th, td) { text-align: center; vertical-align: middle; }
 .account-new-modal .installment-preview :is(th, td) { padding: 5px 4px; font-size: 12px; }
 .account-new-modal .installment-preview th { z-index: 1; }
-.account-new-modal .installment-preview input { width: 100%; min-width: 0; height: 32px; text-align: center; padding: 3px 5px; font-size: 12px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--ink); background: #fff; }
+.account-new-modal .installment-preview input { width: 100%; min-width: 0; height: 32px; text-align: center; padding: 3px 5px; font-size: 12px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--control-ink); background: #fff; }
 .account-new-modal .installment-preview input[type=date] { min-width: 125px; }
 .account-new-modal .installment-preview input[type=number] { min-width: 80px; max-width: 120px; }
 .account-new-modal .installment-total { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; flex-shrink: 0; font-size: 12px; color: var(--ink); }

@@ -108,6 +108,9 @@ input:not([type=checkbox]):not([type=radio]), textarea, select { color: var(--co
 input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .form-field input::placeholder, .search-box input::placeholder { color: #647d81; opacity: 1; }
 .combobox-toggle { color: var(--accent-hover); background: #e9f5ef; border-color: var(--control-border); }
+.combobox .combobox-control input:not(:disabled) { appearance: none; color: var(--control-ink); -webkit-text-fill-color: currentColor; opacity: 1; }
+.combobox .combobox-control input::placeholder { color: #647d81; -webkit-text-fill-color: #647d81; opacity: 1; }
+.combobox-results button { color: var(--control-ink); }
 .combobox-results, .company-dropdown { border-color: var(--control-border); }
 .combobox-results button:hover, .combobox-results button:focus, .combobox-results button.active,
 .combobox-results button[aria-selected=true], .company-option:hover, .add-company:hover { background: var(--accent-soft); color: var(--ink); }

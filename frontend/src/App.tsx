@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { AccountSettlements } from "./components/AccountSettlements";
 import { SettlementForm } from "./components/SettlementForm";
 import { DailyCashForm, type DailyCashValues } from "./components/DailyCashForm";
+import { DailyCashImport, type DailyCashImportHandle } from "./components/DailyCashImport";
 import { CompanySelect } from "./components/CompanySelect";
 import { companyRows, toggleCompany } from "./utils/companies";
 import { netAmount, remainingAmount, settlementPrincipal } from "./utils/accounts";
@@ -246,21 +247,23 @@ function App() {
     const [sorting, setSorting] = useState<{ page: string; key: string; direction: "asc" | "desc" }>({ page: "", key: "", direction: "asc" });
     const [detailsRevision, setDetailsRevision] = useState(0);
     const [cashInitial, setCashInitial] = useState(0);
+    const [cashFilters, setCashFilters] = useState({ dataInicial: "", dataFinal: "", banco: "", formaPagamento: "", natureza: "ambos" });
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | "daily-cash" | null>(null);
+    const [modal, setModalState] = useState<"create" | "edit" | "company" | "company-edit" | "settle" | "details" | "daily-cash" | "cash-import" | null>(null);
     const [selectedRow, setSelectedRow] = useState<Row | null>(null);
     const [pendingSettlements, setPendingSettlements] = useState<Row[]>([]);
     const [editedAmounts, setEditedAmounts] = useState<Row | null>(null);
     const accountForm = useRef<HTMLFormElement | null>(null);
     const initialAccountForm = useRef<string | null>(null);
     const closingModal = useRef(false);
+    const cashImport = useRef<DailyCashImportHandle>(null);
     const [createAccountType, setCreateAccountType] = useState<"receber" | "pagar" | undefined>(undefined);
     function setModal(next: typeof modal, tipo?: "receber" | "pagar") {
         formVersion.current++;
         initialAccountForm.current = null; accountForm.current = null;
         setPendingSettlements([]); setEditedAmounts(null);
-        if (next === "create" || next === "daily-cash") { setFormCompany(selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
+        if (next === "create" || next === "daily-cash") { setFormCompany(companyFilter || selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
@@ -359,6 +362,7 @@ function App() {
     }, [companyMenu, notificationsOpen]);
 
     function navigate(next: string) {
+        if (next === "caixa") setPagination({ key: "", page: 1 });
         if (next === "movimentacoes" || next === "recebimentos") next = "baixas";
         preloadPage(next);
         const path = pagePaths[next] || "/";
@@ -367,7 +371,7 @@ function App() {
     }
 
     useEffect(() => {
-        const onPopState = () => setPage(pageFromPath(window.location.pathname));
+        const onPopState = () => { const next = pageFromPath(window.location.pathname); if (next === "caixa") setPagination({ key: "", page: 1 }); setPage(next); };
         window.addEventListener("popstate", onPopState);
         if (!pagePaths[page]) window.history.replaceState({}, "", "/");
         return () => window.removeEventListener("popstate", onPopState);
@@ -409,8 +413,8 @@ function App() {
 
     const resource = page === "baixas" ? baixasResource : resources.find(item => item.key === page);
     const dateFilters = page === "baixas" ? settlementFilters : undefined;
-    const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "tipo" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
-    const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, sort.key, sort.direction, page === "dashboard" ? dashboardYear : null]);
+    const sort = sorting.page === page ? sorting : { key: page === "lancamentos" ? "data_vencimento" : page === "baixas" ? "data_baixa" : page === "caixa" ? "data_baixa" : "created_at", direction: page === "lancamentos" || page === "caixa" ? "asc" as const : "desc" as const };
+    const filterKey = JSON.stringify([page, scopeKey, search, page === "lancamentos" ? lancamentoFilters : null, dateFilters, page === "pessoas" ? personFilters : null, page === "caixa" ? cashFilters : null, sort.key, sort.direction, page === "dashboard" ? dashboardYear : null]);
     const requestedPage = pagination.key === filterKey ? pagination.page : 1;
     const pageQuery = useMemo(() => {
         const params = new URLSearchParams({ empresas: scopeKey, pagina: String(requestedPage), tamanho: "50", ordem: sort.key, direcao: sort.direction });
@@ -433,13 +437,22 @@ function App() {
                 if (settlementFilters.dataFinal) params.set("data_final", settlementFilters.dataFinal);
             }
         }
+        if (page === "caixa") {
+            if (pagination.key !== filterKey) params.set("ultima_pagina", "true");
+            if (cashFilters.dataInicial) params.set("data_inicial", cashFilters.dataInicial);
+            if (cashFilters.dataFinal) params.set("data_final", cashFilters.dataFinal);
+            if (cashFilters.banco) params.set("banco_id", cashFilters.banco);
+            if (cashFilters.formaPagamento) params.set("forma_pagamento_id", cashFilters.formaPagamento);
+            params.set("mostrar_recebimentos", String(cashFilters.natureza !== "saidas"));
+            params.set("mostrar_pagamentos", String(cashFilters.natureza !== "entradas"));
+        }
         if (page === "pessoas") {
             params.set("mostrar_clientes", String(personFilters.mostrarClientes));
             params.set("mostrar_fornecedores", String(personFilters.mostrarFornecedores));
         }
         const endpoint = page === "dashboard" ? "/lancamentos" : page === "caixa" ? "/caixa" : page === "baixas" ? "/movimentacoes" : resource?.endpoint;
         return page === "dashboard" ? `/lancamentos?resumo=dashboard&empresas=${scopeKey}&ano=${dashboardYear}` : endpoint ? endpoint + "?" + params : "";
-    }, [page, scopeKey, requestedPage, sort.key, sort.direction, search, lancamentoFilters, settlementFilters, personFilters, resource?.endpoint, dashboardYear]);
+    }, [page, scopeKey, requestedPage, sort.key, sort.direction, search, lancamentoFilters, settlementFilters, personFilters, resource?.endpoint, dashboardYear, cashFilters, pagination.key, filterKey]);
     const fetchResources = useCallback(async () => {
         const version = ++loadVersion.current;
         requestController.current?.abort();
@@ -556,6 +569,7 @@ function App() {
         const ids = toggleCompany(selectedCompanyIds, next.id);
         if (ids === selectedCompanyIds) return;
         loadVersion.current++; formVersion.current++;
+        if (page === "caixa") setPagination({ key: "", page: 1 });
         setSelectedCompanyIds(ids); setLookups({}); setLoading(true);
         const first = companies.find(item => ids.includes(item.id)) || null;
         activeCompanyId.current = first?.id || null;
@@ -565,10 +579,12 @@ function App() {
         if (companyFilter && !ids.includes(companyFilter)) setCompanyFilter("");
         setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
         setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
+        setCashFilters(current => ({ ...current, banco: "", formaPagamento: "" }));
         localStorage.setItem("fluxo-companies:" + user?.id, JSON.stringify(ids));
     }
 
     function changeCompanyFilter(id: string) {
+        if (page === "caixa") setPagination({ key: "", page: 1 });
         setCompanyFilter(id);
         setLancamentoFilters(current => ({ ...current, formaPagamento: "" }));
         setSettlementFilters(current => ({ ...current, formaPagamento: "" }));
@@ -872,6 +888,7 @@ function App() {
         status: currentAccount.status === "cancelado" ? "cancelado" : editBalance <= 0 ? "pago" : "pendente" } : null;
     async function requestCloseModal() {
         if (busy || closingModal.current || settlementOverlay) return;
+        if (modal === "cash-import" && cashImport.current?.closeManual()) return;
         const changed = resource?.key === "lancamentos" && (modal === "create" || modal === "edit") &&
             (pendingSettlements.length > 0 || (accountForm.current && initialAccountForm.current !== null && accountFormSnapshot(accountForm.current, formCompanyId) !== initialAccountForm.current));
         const version = formVersion.current;
@@ -1172,7 +1189,10 @@ function App() {
                             <CashPage
                                 key={selectedCompanyIds.join(",") + ":" + companyFilter}
                                 rows={cashRows as never}
+                                filters={cashFilters} onFiltersChange={values => { setCashFilters(values); setPagination({ key: "", page: 1 }); }} loadOptions={loadFilterOptions} lookups={dashboardData}
                                 initial={cashInitial}
+                                previous={Number(listMeta.saldo_anterior || 0)} sort={sort}
+                                onSort={key => setSorting({ page, key, direction: key === "data_baixa" ? "asc" : sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
                                 meta={listMeta}
                                 balance={cashInitial + (listResult?.key === filterKey ? listResult.balance : 0)}
                                 onPageChange={next => setPagination({ key: filterKey, page: next })}
@@ -1189,6 +1209,7 @@ function App() {
                                 onPageChange={next => setPagination({ key: filterKey, page: next })}
                                 loadOptions={loadFilterOptions}
                                 onDailyCash={() => setModal("daily-cash")}
+                                onImportDailyCash={["admin", "contador", "comum"].includes(user.role) ? () => setModal("cash-import") : undefined}
                                 loadQuickSettlementOptions={loadQuickSettlementOptions}
                                 onQuickSettle={quickSettleLaunch}
                                 busy={busy}
@@ -1236,7 +1257,7 @@ function App() {
                         }}
                         onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) { event.preventDefault(); void requestCloseModal(); } }}
                     >
-                        <section className={`modal-card ${modal === "daily-cash" ? "account-new-modal daily-cash-modal" : ""} ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "daily-cash" ? "Caixa Diário" : modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
+                        <section className={`modal-card ${modal === "daily-cash" ? "account-new-modal daily-cash-modal" : modal === "cash-import" ? "cash-import-modal" : ""} ${modal === "settle" ? "settlement-modal" : ""} ${modal === "details" ? "account-modal" : ""} ${(modal === "create" || modal === "edit") && resource?.key === "lancamentos" ? modal === "edit" ? `account-new-modal account-edit-modal account-edit-${currentAccount?.tipo}` : "account-new-modal" : ""}`} role="dialog" aria-modal="true" aria-label={modal === "cash-import" ? "Importar caixa diário" : modal === "daily-cash" ? "Caixa Diário" : modal === "details" ? "Detalhes das baixas" : "Cadastro"}>
                             <div className="modal-head">
                                 <div>
                                     <span className="eyebrow muted">
@@ -1253,7 +1274,7 @@ function App() {
                                                 : "NOVO CADASTRO"}
                                     </span>
                                     <h2>
-                                        {modal === "daily-cash" ? "Caixa Diário" : modal === "company"
+                                        {modal === "cash-import" ? "Importar caixa diário" : modal === "daily-cash" ? "Caixa Diário" : modal === "company"
                                             ? "Cadastre sua empresa"
                                             : modal === "company-edit"
                                               ? "Configurações da empresa"
@@ -1276,7 +1297,7 @@ function App() {
                                 </button>
                             </div>
                             <Suspense fallback={<div className="table-loading" role="status"><span className="spinner" /> Carregando...</div>}>
-                            {modal === "daily-cash" ? <div className="daily-cash-content"><DailyCashForm key={formCompanyId} lookups={formLookups} loadOptions={loadFormOptions} busy={busy} onSave={saveDailyCash} onCancel={() => void requestCloseModal()} /></div> : modal === "details" && currentAccount ? (
+                            {modal === "cash-import" ? <DailyCashImport ref={cashImport} companies={companies} companyId={company.id} request={api} busy={busy} onBusy={setBusy} onChanged={reloadCurrent} /> : modal === "daily-cash" ? <div className="daily-cash-content"><DailyCashForm key={formCompanyId} lookups={formLookups} loadOptions={loadFormOptions} busy={busy} onSave={saveDailyCash} onCancel={() => void requestCloseModal()} /></div> : modal === "details" && currentAccount ? (
                                 <div className="record-form">
                                     <p><b>{currentAccount.pessoa_id && <>{displayValue("pessoa_id", currentAccount.pessoa_id)} · </>}{String(currentAccount.descricao)}</b></p>
                                     <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}

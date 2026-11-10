@@ -17,7 +17,7 @@ import { formatarErroZod } from "../utils/zod";
 import { createSettlement, SettlementError } from "./settlement.service";
 
 import { createLaunches, updateLaunch } from "./lancamentos.service";
-import { createDailyCash } from "../caixa/caixa-diario.service";
+import { createDailyCash, dailyCashSchema } from "../caixa/caixa-diario.service";
 import { adjustmentSchema, customInstallmentsSchema, settlementAdjustmentShape, settlementConfirmationShape } from "./launch-values";
 
 const competencia = z.string().date()
@@ -98,10 +98,7 @@ router.use(attachCurrentUser, requireEmpresa);
 const writeAccess = requireRole("admin", "contador", "comum");
 
 router.post("/caixa-diario", writeAccess, async (req: Request, res: Response) => {
-    const parsed = z.object({ data, tipo_caixa_diario_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0),
-        observacoes: z.string().trim().max(5000).nullable().optional(),
-        baixas: z.array(z.object({ banco_id: z.string().uuid(), forma_pagamento_id: z.string().uuid(), valor: adjustmentSchema.refine(value => value > 0) }).strict()).max(500),
-    }).strict().safeParse(req.body);
+    const parsed = dailyCashSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
     try { return res.status(201).json(await createDailyCash(req.empresaId!, parsed.data)); }
     catch (error) {

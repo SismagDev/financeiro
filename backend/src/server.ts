@@ -55,6 +55,7 @@ async function startServer() {
     );
 
     app.use("/importacao/access", express.json({ limit: "12mb" }));
+    app.use("/importacao/caixa-diario", express.json({ limit: "12mb" }));
     app.use(express.json({ limit: "100kb" }));
     app.use(cookieParser());
 

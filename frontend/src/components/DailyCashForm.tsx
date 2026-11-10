@@ -9,16 +9,17 @@ export type DailyCashValues = {
     data: string; tipo_caixa_diario_id: string; valor: number; observacoes: string | null;
     baixas: (BankPayment & { valor: number })[];
 };
-type Props = { lookups: Record<string, Row[]>; loadOptions: OptionLoader; busy: boolean; onSave: (values: DailyCashValues) => Promise<void>; onCancel: () => void };
+type Props = { lookups: Record<string, Row[]>; loadOptions: OptionLoader; busy: boolean; onSave: (values: DailyCashValues) => Promise<void>; onCancel: () => void;
+    initial?: DailyCashValues; lockedIdentity?: boolean };
 
-export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel }: Props) {
-    const [date, setDate] = useState(localDateInputValue);
-    const [type, setType] = useState("");
-    const [total, setTotal] = useState("");
-    const [notes, setNotes] = useState("");
+export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel, initial, lockedIdentity = false }: Props) {
+    const [date, setDate] = useState(initial?.data ?? localDateInputValue);
+    const [type, setType] = useState(initial?.tipo_caixa_diario_id ?? "");
+    const [total, setTotal] = useState(initial ? String(initial.valor) : "");
+    const [notes, setNotes] = useState(initial?.observacoes ?? "");
     const [payment, setPayment] = useState<BankPayment>({ banco_id: "", forma_pagamento_id: "" });
     const [amount, setAmount] = useState("");
-    const [settlements, setSettlements] = useState<(BankPayment & { id: string; valor: number })[]>([]);
+    const [settlements, setSettlements] = useState<(BankPayment & { id: string; valor: number })[]>(() => initial?.baixas.map(row => ({ ...row, id: crypto.randomUUID() })) ?? []);
     const [settlementPage, setSettlementPage] = useState(1);
     const [error, setError] = useState("");
     const settled = settlements.reduce((sum, row) => sum + Math.round(row.valor * 100), 0);
@@ -47,8 +48,8 @@ export function DailyCashForm({ lookups, loadOptions, busy, onSave, onCancel }: 
     return <form className="record-form daily-cash-form" onSubmit={submit}>
         <div className="account-create-layout">
             <div className="account-create-main"><div className="form-grid">
-                <label className="form-field full-field">Data<input type="date" required value={date} disabled={busy} onChange={event => setDate(event.target.value)} /></label>
-                <label className="form-field full-field">Tipo de Caixa<Combobox label="Tipo de Caixa" required source="tiposCaixa" loadOptions={loadOptions} value={type} disabled={busy} onChange={setType}
+                <label className="form-field full-field">Data<input type="date" required value={date} disabled={busy || lockedIdentity} onChange={event => setDate(event.target.value)} /></label>
+                <label className="form-field full-field">Tipo de Caixa<Combobox label="Tipo de Caixa" required source="tiposCaixa" loadOptions={loadOptions} value={type} disabled={busy || lockedIdentity} onChange={setType}
                     options={(lookups.tiposCaixa || []).map(row => [String(row.id), String(row.descricao)])} /></label>
                 <label className="form-field full-field">Valor Total<input type="number" min="0.01" step="0.01" required value={total} disabled={busy} onChange={event => setTotal(event.target.value)} /></label>
                 <label className="form-field full-field"><span>Observações <small className="optional-label">Opcional</small></span><textarea rows={4} maxLength={5000} value={notes} disabled={busy} onChange={event => setNotes(event.target.value)} /></label>

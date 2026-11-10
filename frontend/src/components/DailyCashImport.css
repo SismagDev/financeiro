@@ -1,0 +1,15 @@
+.cash-import-modal { width: min(1120px, 100%); }
+.daily-cash-import { min-width: 0; }
+.daily-cash-import fieldset { border: 1px solid var(--border, #dce2e8); border-radius: 12px; margin: 16px 0; padding: 16px; min-width: 0; }
+.daily-cash-import legend { font-weight: 600; padding: 0 6px; }
+.cash-import-pending { border: 1px solid var(--border, #dce2e8); border-radius: 12px; padding: 16px; margin: 12px 0; }
+.cash-import-table { overflow: auto; max-height: 440px; margin-top: 12px; }
+.cash-import-table table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.cash-import-table th, .cash-import-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border, #dce2e8); }
+.cash-import-table th { position: sticky; top: 0; background: var(--surface, white); }
+.daily-cash-import details { margin: 16px 0; }
+.daily-cash-import summary { cursor: pointer; }
+.cash-import-existing-list { max-height: 240px; overflow-y: auto; }
+.cash-import-existing { padding: 12px; border: 1px solid var(--panel-border); border-radius: 8px; }
+.cash-import-mapping { gap: 16px; }
+.cash-import-mapping .form-field { min-width: 0; }

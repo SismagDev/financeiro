@@ -42,6 +42,7 @@ type Props = {
     onSearch: (value: string) => void;
     onCreate: (tipo?: "receber" | "pagar") => void;
     onDailyCash: () => void;
+    onImportDailyCash?: () => void;
     onEdit: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
@@ -70,6 +71,7 @@ export function ResourcePage({
     onSearch,
     onCreate,
     onDailyCash,
+    onImportDailyCash,
     onEdit,
     onDelete,
     onSettle,
@@ -86,6 +88,13 @@ export function ResourcePage({
     dateFilters,
     onDateFiltersChange,
 }: Props) {
+    const [summaryExpanded, setSummaryExpanded] = useState(() => {
+        try { return localStorage.getItem("fluxo-account-summary-expanded") === "true"; } catch { return false; }
+    });
+    useEffect(() => {
+        if (resource.key !== "lancamentos") return;
+        try { localStorage.setItem("fluxo-account-summary-expanded", String(summaryExpanded)); } catch { /* Mantém a escolha durante a sessão. */ }
+    }, [resource.key, summaryExpanded]);
     const [quickSettlement, setQuickSettlement] = useState<{ row: Row; paymentForm: string } | null>(null);
     const quickRoot = useRef<HTMLDivElement>(null);
     const tableWrap = useRef<HTMLDivElement>(null);
@@ -153,6 +162,7 @@ export function ResourcePage({
                     {companyFilter}
                 </div>
                 {showSettlement ? <div className="account-create-buttons">
+                    {onImportDailyCash && <button className="button button-secondary" onClick={onImportDailyCash}><Icon name="arrowDown" size={18} /> Importar caixa diário</button>}
                     <button className="button daily-cash-button" onClick={onDailyCash}><Icon name="wallet" size={18} /> Caixa Diário</button>
                     <button className="button account-receive-button" onClick={() => onCreate("receber")}><Icon name="arrowDown" size={18} /> Receber</button>
                     <button className="button account-pay-button" onClick={() => onCreate("pagar")}><Icon name="arrowUp" size={18} /> Pagar</button>
@@ -426,15 +436,17 @@ export function ResourcePage({
             {showSettlement && (
                 <section className="launch-summary">
                     <span>Resumo das contas filtradas</span>
-                    <div>
-                        <small>Saldo a pagar</small>
-                        <b>{formatValue("valor", totals.pagar)}</b>
+                    <div className="launch-summary-balances">
+                        <div>
+                            <small>Saldo a pagar</small>
+                            <b>{formatValue("valor", totals.pagar)}</b>
+                        </div>
+                        <div>
+                            <small>Saldo a receber</small>
+                            <b>{formatValue("valor", totals.receber)}</b>
+                        </div>
                     </div>
-                    <div>
-                        <small>Saldo a receber</small>
-                        <b>{formatValue("valor", totals.receber)}</b>
-                    </div>
-                    <details className="launch-summary-details">
+                    <details className="launch-summary-details" open={summaryExpanded} onToggle={event => setSummaryExpanded(event.currentTarget.open)}>
                         <summary><span className="summary-expand">Expandir totais</span><span className="summary-collapse">Recolher totais</span></summary>
                         <div className="launch-summary-expanded">
                             <div>

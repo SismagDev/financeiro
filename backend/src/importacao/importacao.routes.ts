@@ -6,10 +6,22 @@ import { SettlementError } from "../lancamentos/settlement.service";
 import { formatarErroZod } from "../utils/zod";
 import { importSchema } from "./importacao.plan";
 import { importAccess } from "./importacao.service";
+import { cashImportSchema } from "./caixa-diario.plan";
+import { importDailyCash } from "./caixa-diario.service";
 
 const router = Router();
-router.use(attachCurrentUser, requireRole("admin"), requireEmpresa);
-router.post("/access", async (req, res) => {
+router.post("/caixa-diario", attachCurrentUser, requireRole("admin", "contador", "comum"), requireEmpresa, async (req, res) => {
+    const parsed = cashImportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
+    try { return res.status(parsed.data.acao === "importar" || parsed.data.acao === "manual" ? 201 : 200).json(await importDailyCash(req.currentUser!.id, parsed.data)); }
+    catch (error) {
+        if (error instanceof z.ZodError) return res.status(400).json(formatarErroZod(error));
+        if (error instanceof SettlementError) return res.status(error.status).json({ message: error.message });
+        console.error("Erro na importação de Caixa Diário:", error instanceof Error ? error.message : error);
+        return res.status(500).json({ message: "Não foi possível importar o Caixa Diário. Nenhum registro desta operação foi gravado" });
+    }
+});
+router.post("/access", attachCurrentUser, requireRole("admin"), requireEmpresa, async (req, res) => {
     const parsed = importSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
     if (parsed.data.filiais["1"] !== req.empresaId)

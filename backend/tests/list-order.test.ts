@@ -9,10 +9,10 @@ const forms = { table: "formas_pagamento", fields: ["descricao", "tipo", "banco_
 const originalQuery = pool.query;
 after(() => { pool.query = originalQuery; });
 
-test("contas priorizam tipo e mantêm desempates ao ordenar outra coluna antes da paginação", async () => {
+test("contas priorizam vencimento e depois tipo e mantêm desempates ao ordenar outra coluna antes da paginação", async () => {
     const config = { table: "lancamentos", fields: ["tipo", "data_vencimento", "pessoa_id", "descricao", "num_doc", "valor"] };
     const defaults = buildList(config, {}, [company]);
-    assert.ok(defaults.order.startsWith("tipo asc NULLS LAST, data_vencimento asc NULLS LAST, translate(lower(btrim(pessoa_nome))"));
+    assert.ok(defaults.order.startsWith("data_vencimento asc NULLS LAST, tipo asc NULLS LAST, translate(lower(btrim(pessoa_nome))"));
     assert.ok(defaults.order.indexOf("btrim(descricao)") < defaults.order.indexOf("btrim(num_doc)"));
     assert.ok(defaults.order.indexOf("btrim(num_doc)") < defaults.order.indexOf("(valor -"));
     const name = buildList(config, { ordem: "pessoa_id", direcao: "desc" }, [company]);
@@ -25,6 +25,8 @@ test("contas priorizam tipo e mantêm desempates ao ordenar outra coluna antes d
     assert.throws(() => buildList(config, { ordem: "tipo; SELECT 1" }, [company]), /Ordenação inválida/);
     let sql = "";
     pool.query = (async (statement: string) => { sql = statement; return { rows: [{ data: [], meta: {} }] }; }) as typeof pool.query;
+    await listRecords(config, { pagina: 2, tamanho: 50 }, [company]);
+    assert.ok(sql.includes(`FROM filtered ORDER BY ${defaults.order} LIMIT 50 OFFSET`));
     await listRecords(config, { pagina: 2, tamanho: 50, ordem: "valor", direcao: "desc" }, [company]);
     assert.ok(sql.includes(`FROM filtered ORDER BY ${value.order} LIMIT 50 OFFSET`));
 });

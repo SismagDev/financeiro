@@ -127,6 +127,44 @@ async function run() {
         assert.equal(cashPage.data[49].saldo_depois, cashNext.data[0].saldo_antes);
         assert.equal(cashNext.data.at(-1).saldo_depois, 55);
         check("caixa conserva saldo acumulado entre páginas e saldo final global");
+        const cashLast = await request(`/caixa?${scope}&ultima_pagina=true&saldo_inicial=100`);
+        assert.equal(cashLast.meta.pagina, 2); assert.equal(cashLast.data.length, 21);
+        assert.equal(cashLast.data.at(-1).data, '2026-10-31'); assert.equal(cashLast.saldo_atual, 55);
+        const bank = randomUUID(), foreignBank = randomUUID();
+        await client.query("INSERT INTO bancos (id,empresa_id,descricao) VALUES ($1,$2,'Banco teste'),($3,$4,'Banco outra empresa')", [bank, ids[0], foreignBank, ids[1]]);
+        await client.query('UPDATE formas_pagamento SET banco_id=$1 WHERE id=$2 AND empresa_id=$3', [bank, form, ids[0]]);
+        const filteredCash = await request(`/caixa?${scope}&ultima_pagina=true&saldo_inicial=100&banco_id=${bank}&forma_pagamento_id=${form}&data_inicial=2026-10-31&data_final=2026-10-31&mostrar_pagamentos=false`);
+        assert.equal(filteredCash.meta.total, 1); assert.equal(filteredCash.meta.pagina, 1);
+        assert.equal(filteredCash.saldo_atual, 125); assert.equal(filteredCash.data[0].saldo_antes, 100);
+        const cashOut = await request(`/caixa?${scope}&ultima_pagina=true&saldo_inicial=100&banco_id=${bank}&mostrar_recebimentos=false`);
+        assert.equal(cashOut.meta.total, 70); assert.equal(cashOut.meta.pagina, 2); assert.equal(cashOut.saldo_atual, 30);
+        const emptyCash = await request(`/caixa?${scope}&ultima_pagina=true&banco_id=${foreignBank}`);
+        assert.equal(emptyCash.meta.total, 0); assert.equal(emptyCash.meta.pagina, 1); assert.equal(emptyCash.saldo_atual, 0);
+        const shrunk = await request(`/caixa?${scope.replace('pagina=1','pagina=999')}&data_inicial=2026-10-31`);
+        assert.equal(shrunk.meta.pagina, 1); assert.equal(shrunk.meta.total, 1);
+        await request(`/caixa?${scope}&data_inicial=2026-11-01&data_final=2026-10-01`, 400);
+        check('caixa: última página, filtros combinados, limites inclusivos, saldos, período inválido e banco por empresa');
+        await client.query('SAVEPOINT opening_balance_test');
+        await client.query("INSERT INTO recebimentos (empresa_id,lancamento_id,forma_pagamento_id,valor,data_recebimento) VALUES ($1,$2,$3,40,'2024-12-31')", [ids[0], receiving, form]);
+        await client.query("INSERT INTO movimentacoes (empresa_id,lancamento_id,forma_pagamento_id,valor,data_movimentacao) VALUES ($1,$2,$3,5,'2024-12-31')", [ids[0], account, form]);
+        const carried = await request(`/caixa?${scope}&data_inicial=2026-10-31&data_final=2026-10-31&saldo_inicial=100&banco_id=${bank}&forma_pagamento_id=${form}`);
+        assert.equal(carried.meta.total, 1); assert.equal(carried.saldo_anterior, -35);
+        assert.equal(carried.data[0].saldo_antes, 65); assert.equal(carried.data[0].saldo_depois, 90); assert.equal(carried.saldo_atual, 90);
+        for (const key of ['descricao','natureza','forma_pagamento_id','instituicao','valor','saldo_antes','saldo_depois']) {
+            for (const direction of ['asc','desc']) {
+                const ordered = await request(`/caixa?empresas=${ids.join(',')}&pagina=1&tamanho=100&ordem=${key}&direcao=${direction}`);
+                const dates = ordered.data.map((row: { data: string }) => row.data);
+                assert.deepEqual(dates, [...dates].sort());
+                if (['valor','saldo_antes','saldo_depois'].includes(key)) {
+                    const values = ordered.data.filter((row: { data: string }) => row.data === '2024-12-31').map((row: Record<string, number>) => row[key]);
+                    assert.deepEqual(values, [...values].sort((a,b) => direction === 'asc' ? a-b : b-a));
+                }
+            }
+        }
+        const emptyPeriod = await request(`/caixa?${scope}&data_inicial=2027-01-01&saldo_inicial=100`);
+        assert.equal(emptyPeriod.meta.total, 0); assert.equal(emptyPeriod.saldo_atual, 90);
+        await client.query('ROLLBACK TO SAVEPOINT opening_balance_test');
+        check('saldo anterior inclui anos anteriores, ajuste manual e período vazio; ordenação por coluna preserva data primeiro');
         await client.query("UPDATE empresas SET caixa_data_inicio='2026-10-31T00:00:00Z' WHERE id=$1", [ids[0]]);
         const fromDate = await request(`/caixa?${scope}`);
         assert.equal(fromDate.meta.total, 1); assert.equal(fromDate.saldo_atual, 25);

@@ -1,7 +1,11 @@
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
+import { SettlementFilters, type SettlementFilterValues } from "../components/SettlementFilters";
+import { Combobox } from "../components/Combobox";
 import { Pagination } from "../components/Pagination";
 import { Icon } from "../components/Icon";
-import type { ListMeta, Row } from "../types";
+import type { ListMeta, Row, OptionLoader } from "../types";
+
+type CashFilters = SettlementFilterValues & { banco: string; natureza: string };
 
 type CashRow = Row & {
     data: string;
@@ -25,6 +29,8 @@ export function CashPage({
     onInitialChange,
     onRefresh,
     meta, balance, onPageChange,
+    filters, onFiltersChange, loadOptions, lookups,
+    previous, sort, onSort,
 }: {
     companyFilter?: ReactNode;
     rows: CashRow[];
@@ -34,7 +40,12 @@ export function CashPage({
     meta: ListMeta;
     balance: number;
     onPageChange: (page: number) => void;
+    filters: CashFilters; onFiltersChange: (filters: CashFilters) => void;
+    loadOptions: OptionLoader; lookups: Record<string, Row[]>;
+    previous: number; sort: { key: string; direction: "asc" | "desc" }; onSort: (key: string) => void;
 }) {
+    const loadPaymentOptions: OptionLoader = useCallback((source, query, page) => loadOptions(
+        source === "formas" && filters.banco ? `formasBanco:${filters.banco}` : source, query, page), [loadOptions, filters.banco]);
     return (
         <>
             <div className="page-heading list-heading">
@@ -63,10 +74,10 @@ export function CashPage({
                     <div className="summary-top">
                         <span>Saldo inicial</span>
                     </div>
-                    <strong>{currency(initial)}</strong>
+                    <strong>{currency(initial + previous)}</strong>
                     <div className="summary-foot">
                         <label>
-                            Editar{" "}
+                            Ajuste manual{" "}
                             <input
                                 className="cash-input"
                                 type="number"
@@ -79,18 +90,28 @@ export function CashPage({
                 </article>
             </section>
             <section className="panel list-panel cash-list-panel">
+                <div className="list-toolbar">
+                    <SettlementFilters filters={filters} onChange={values => onFiltersChange({ ...filters, ...values })}
+                        paymentForms={(lookups.formas || []).filter(row => !filters.banco || row.banco_id === filters.banco)} loadOptions={loadPaymentOptions}>
+                        <label>Banco<Combobox label="Filtrar por banco" placeholder="Todos os bancos" emptyLabel="Todos os bancos" source="bancos" loadOptions={loadOptions}
+                            value={filters.banco} options={(lookups.bancos || []).map(row => [String(row.id), String(row.descricao)])}
+                            onChange={banco => onFiltersChange({ ...filters, banco, formaPagamento: "" })} /></label>
+                        <label>Natureza<Combobox label="Natureza do movimento" required value={filters.natureza}
+                            options={[["ambos", "Entradas e saídas"], ["entradas", "Entradas"], ["saidas", "Saídas"]]}
+                            onChange={natureza => onFiltersChange({ ...filters, natureza })} /></label>
+                        <button type="button" className="button button-secondary" onClick={() => onFiltersChange({ dataInicial: "", dataFinal: "", banco: "", formaPagamento: "", natureza: "ambos" })}>Limpar filtros</button>
+                    </SettlementFilters>
+                </div>
                 <div className="table-wrap">
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th>Data</th>
-                                <th>Descrição</th>
-                                <th>Tipo</th>
-                                <th>Forma</th>
-                                <th>Instituição</th>
-                                <th className="align-right">Valor</th>
-                                <th className="align-right">Saldo antes</th>
-                                <th className="align-right">Saldo depois</th>
+                                {[["data_baixa", "Data"], ["descricao", "Descrição"], ["natureza", "Tipo"], ["forma_pagamento_id", "Forma"], ["instituicao", "Instituição"], ["valor", "Valor"], ["saldo_antes", "Saldo antes"], ["saldo_depois", "Saldo depois"]].map(([key, label]) =>
+                                    <th key={key} className={["valor", "saldo_antes", "saldo_depois"].includes(key) ? "align-right" : ""} aria-sort={key === "data_baixa" ? "ascending" : sort.key === key ? sort.direction === "asc" ? "ascending" : "descending" : undefined}>
+                                        <button type="button" className={`sort-button ${key === "data_baixa" || sort.key === key ? "active" : ""}`} onClick={() => onSort(key)} title={key === "data_baixa" ? "Data crescente permanece como primeiro critério" : "Ordenar dentro de cada data"}>
+                                            {label}{key === "data_baixa" ? " ↑" : sort.key === key ? sort.direction === "asc" ? " ↑" : " ↓" : ""}
+                                        </button>
+                                    </th>)}
                             </tr>
                         </thead>
                         <tbody>

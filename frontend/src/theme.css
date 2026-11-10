@@ -193,12 +193,13 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .quick-link small, .chart-y, .bar-group, .chart-legend, .dashboard-year-filter { color: var(--muted); }
 .launch-summary { background: #e6f3ed; border-color: #a7cdbf; flex-wrap: wrap; }
 .launch-summary > span { color: var(--accent-hover); }
+.launch-summary .launch-summary-balances, .launch-summary .launch-summary-expanded { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; width: min(100%, 360px); margin-left: auto; text-align: right; }
 .launch-summary-details { flex-basis: 100%; }
-.launch-summary-details summary { width: fit-content; cursor: pointer; color: var(--accent-hover); font-size: 12px; font-weight: 600; }
+.launch-summary-details summary { width: fit-content; margin-left: auto; cursor: pointer; color: var(--accent-hover); font-size: 12px; font-weight: 600; }
 .launch-summary-details summary:focus-visible { outline: 3px solid var(--control-border); outline-offset: 3px; }
 .launch-summary-details .summary-collapse, .launch-summary-details[open] .summary-expand { display: none; }
 .launch-summary-details[open] .summary-collapse { display: inline; }
-.launch-summary .launch-summary-expanded { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 16px 28px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
+.launch-summary .launch-summary-expanded { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
 .launch-summary-expanded small { color: var(--muted); }
 
 /* Modais, formulários e feedbacks usam a mesma paleta das páginas. */

@@ -5,6 +5,7 @@ import { alphabeticalOrder } from "../utils/alphabetical-order";
 
 const bool = z.enum(["true", "false"]).transform(value => value === "true").optional();
 export const listShape = {
+    ultima_pagina: z.literal("true").optional(),
     ano: z.coerce.number().int().min(1).max(9998).optional(),
     tipo_conta: z.enum(["receber", "pagar"]).optional(),
     pagina: z.coerce.number().int().min(1).max(1000000).optional(),
@@ -34,7 +35,7 @@ export const settlementsSql = (scope = "$1", cash = false) => ["movimentacoes", 
         ${receiving ? "s.data_recebimento" : "NULL::date"} AS data_recebimento,
         ${receiving ? "NULL::date" : "s.data_movimentacao"} AS data_movimentacao,
         l.pessoa_id, l.descricao, l.tipo AS categoria, p.nome AS pessoa_nome, fp.descricao AS forma_pagamento_descricao,
-        fp.banco_id, b.descricao AS banco_descricao, b.descricao AS instituicao
+        ${cash ? "COALESCE(fp.banco_id, l.banco_id)" : "fp.banco_id"} AS banco_id, b.descricao AS banco_descricao, b.descricao AS instituicao
         FROM ${table} s JOIN lancamentos l ON l.id = s.lancamento_id AND l.empresa_id = s.empresa_id
         ${cash ? "JOIN empresas e ON e.id = s.empresa_id" : ""}
         LEFT JOIN pessoas p ON p.id = l.pessoa_id AND p.empresa_id = l.empresa_id
@@ -129,10 +130,11 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
         if (query.data_final) clauses.push(`${dateColumn} < (${param(query.data_final)}::date + 1)`);
     }
     const allowed = ["id", "created_at", "empresa_identificador", ...config.fields,
+        ...(cash ? ["valor", "instituicao", "saldo_antes", "saldo_depois"] : []),
         ...(launches ? ["pessoa_nome", "plano_conta_descricao", ...(!query.opcoes ? ["saldo"] : [])] : []),
         ...(settlements ? ["data_baixa", "pessoa_id", "descricao", "natureza", "forma_pagamento_id"] : [])];
     if (query.ordem && !allowed.includes(query.ordem)) throw new Error("Ordenação inválida");
-    const key = query.ordem || (query.opcoes ? "created_at" : cash ? "data_baixa" : launches ? "tipo" : settlements ? "data_baixa" : "created_at");
+    const key = query.ordem || (query.opcoes ? "created_at" : cash ? "data_baixa" : launches ? "data_vencimento" : settlements ? "data_baixa" : "created_at");
     const mapped = key === "pessoa_id" && (launches || settlements) ? "pessoa_nome" : key === "plano_conta_id" && launches ? "plano_conta_descricao"
         : key === "forma_pagamento_id" && settlements ? "forma_pagamento_descricao" : key;
     const direction = query.direcao || (launches || cash ? "asc" : "desc");
@@ -146,11 +148,13 @@ export function buildList(config: Config, query: ListQuery, ids: string[], exact
                 : ["pessoa_nome", "descricao", "num_doc"].includes(column) ? alphabeticalOrder(column) : column;
             return `${expression} ${index === 0 ? direction : "asc"} NULLS LAST`;
         }).join(", ");
+    const cashExpression = mapped === "valor" ? "CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END" : mapped;
+    const cashOrder = `data_baixa asc NULLS LAST, ${mapped === "data_baixa" ? "" : cashExpression + " " + direction + " NULLS LAST, "}id asc, empresa_id asc, origem asc`;
     const order = query.opcoes
         ? `${alphabeticalOrder(optionLabel)} ASC NULLS LAST, id ASC, empresa_id ASC`
         : config.table === "formas_pagamento"
         ? "ativo DESC NULLS LAST, lower(descricao) ASC, lower(banco_descricao) ASC NULLS LAST, id ASC, empresa_id ASC"
-        : launches ? `${accountOrder}, id ASC, empresa_id ASC`
+        : cash ? cashOrder : launches ? `${accountOrder}, id ASC, empresa_id ASC`
         : `${mapped === "valor" && launches ? "(valor - COALESCE(desconto,0) + COALESCE(acrescimo,0))" : mapped} ${direction} NULLS LAST, id ${direction}, empresa_id ${direction}${settlements ? `, origem ${direction}` : ""}`;
     return { source, where: clauses.length ? clauses.join(" AND ") : "TRUE", values, order, launches, cash };
 }
@@ -159,28 +163,44 @@ export async function listRecords(config: Config, query: ListQuery, ids: string[
     const built = buildList(config, query, ids, exact);
     const { source, where, values, order, launches, cash } = built;
     const size = query.tamanho ?? 50;
-    const paginated = query.pagina !== undefined || query.tamanho !== undefined;
+    const paginated = query.pagina !== undefined || query.tamanho !== undefined || (cash && query.ultima_pagina !== undefined);
     const limit = paginated ? `LIMIT ${size} OFFSET ((SELECT pagina FROM meta) - 1) * ${size}` : "";
     const summary = launches && !query.opcoes ? `, COALESCE(SUM(saldo) FILTER (WHERE tipo = 'pagar' AND status NOT IN ('pago','cancelado')),0) AS pagar,
         COALESCE(SUM(saldo) FILTER (WHERE tipo = 'receber' AND status NOT IN ('pago','cancelado')),0) AS receber,
         COALESCE(SUM(total_baixado_liquido) FILTER (WHERE tipo = 'pagar' AND status <> 'cancelado'),0) AS pago,
         COALESCE(SUM(total_baixado_liquido) FILTER (WHERE tipo = 'receber' AND status <> 'cancelado'),0) AS recebido`
         : config.table === "pessoas" ? ", COUNT(*) FILTER (WHERE NOT COALESCE(cliente,FALSE) AND NOT COALESCE(fornecedor,FALSE))::int AS sem_vinculo" : "";
-    const cashSummary = cash ? ", COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END),0) AS movimento" : "";
-    const cashColumns = cash ? `, data_baixa::text AS data, CASE WHEN origem = 'recebimentos' THEN 'Entrada' ELSE 'Saída' END AS tipo_caixa,
+    let opening = "";
+    if (cash) {
+        let priorWhere = "FALSE";
+        if (query.data_inicial) {
+            const prior = buildList(config, { ...query, data_inicial: undefined, data_final: undefined }, ids, exact);
+            const offset = values.length - 1;
+            priorWhere = prior.where.replace(/\$(\d+)/g, (_, index: string) => "$" + (Number(index) === 1 ? 1 : Number(index) + offset));
+            values.push(...prior.values.slice(1), query.data_inicial);
+            priorWhere += ` AND data_baixa < $${values.length}::date`;
+        }
+        opening = `, opening AS (SELECT COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END),0) AS saldo_anterior FROM base WHERE ${priorWhere})`;
+    }
+    const cashSummary = cash ? ", COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END),0) AS movimento, (SELECT saldo_anterior FROM opening) AS saldo_anterior" : "";
+    const balanceSort = cash && ["saldo_antes", "saldo_depois"].includes(query.ordem || "");
+    const balanceOrder = balanceSort ? "data_baixa asc NULLS LAST, id asc, empresa_id asc, origem asc" : order;
+    const ledgerColumns = cash ? `, data_baixa::text AS data, CASE WHEN origem = 'recebimentos' THEN 'Entrada' ELSE 'Saída' END AS tipo_caixa,
         CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END AS valor_caixa,
-        COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END) OVER (ORDER BY ${order} ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS saldo_antes,
-        SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END) OVER (ORDER BY ${order} ROWS UNBOUNDED PRECEDING) AS saldo_depois` : "";
+        COALESCE(SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END) OVER (ORDER BY ${balanceOrder} ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) + (SELECT saldo_anterior FROM opening) AS saldo_antes,
+        SUM(CASE WHEN origem = 'recebimentos' THEN valor ELSE -valor END) OVER (ORDER BY ${balanceOrder} ROWS UNBOUNDED PRECEDING) + (SELECT saldo_anterior FROM opening) AS saldo_depois` : "";
+    const cashColumns = balanceSort ? "" : ledgerColumns;
     // Preserva os tipos textuais que o driver pg já retornava para NUMERIC e BIGINT.
     const textNumbers = launches ? ["valor", "desconto", "acrescimo", "numero"]
         : cash || config.table === "recebimentos" || config.table === "movimentacoes" ? ["valor"] : [];
     const pageJson = textNumbers.length ? `to_jsonb(page) || jsonb_build_object(${textNumbers.map(key => `'${key}', page.${key}::text`).join(", ")})` : "row_to_json(page)";
-    const result = await pool.query(`WITH base AS NOT MATERIALIZED (${source}), filtered AS NOT MATERIALIZED (
+    const result = await pool.query(`WITH base AS NOT MATERIALIZED (${source})${opening}, filtered AS NOT MATERIALIZED (
         SELECT base.*, (SELECT e.identificador FROM empresas e WHERE e.id = base.empresa_id) AS empresa_identificador FROM base WHERE ${where}
     ), totals AS (SELECT COUNT(*)::int AS total${summary}${cashSummary} FROM filtered),
-    meta AS (SELECT *, LEAST(${query.pagina ?? 1}, GREATEST(1, CEIL(total::numeric / ${size})::int)) AS pagina,
+    meta AS (SELECT *, ${cash && query.ultima_pagina ? "GREATEST(1, CEIL(total::numeric / " + size + ")::int)" : `LEAST(${query.pagina ?? 1}, GREATEST(1, CEIL(total::numeric / ${size})::int))`} AS pagina,
         GREATEST(1, CEIL(total::numeric / ${size})::int) AS paginas FROM totals),
-    page AS (SELECT *${cashColumns} FROM filtered ORDER BY ${order} ${limit})
+    ${balanceSort ? "ledger AS (SELECT *" + ledgerColumns + " FROM filtered)," : ""}
+    page AS (SELECT *${cashColumns} FROM ${balanceSort ? "ledger" : "filtered"} ORDER BY ${order} ${limit})
     SELECT COALESCE((SELECT json_agg(${pageJson}) FROM page), '[]'::json) AS data, row_to_json(meta) AS meta FROM meta`, values);
     const response = result.rows[0];
     for (const row of response.data) {

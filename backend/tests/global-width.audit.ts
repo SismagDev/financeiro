@@ -15,7 +15,7 @@ async function run() {
         if (url.pathname === "/auth/me") return route.fulfill({ json: { data: { id: "audit", email: "audit@invalid", role: admin ? "admin" : "comum" } } });
         if (url.pathname === "/empresas") return route.fulfill({ json: { data: [{ id: company, nome: "Empresa teste", perfil: "comum", licenca_status: "ativa" }] } });
         if (url.searchParams.has("resumo")) return route.fulfill({ json: { data: { overdue: 0, automaticOverdue: 0, overdueRows: [], rows, flowRows: [], pagar: 0, receber: 100, totalPaid: 100 } } });
-        const generic = { id: "cadastro", empresa_id: company, nome: "Cadastro com nome longo para conferir a rolagem horizontal", descricao: "Cadastro de conferência", documento: "12345678901", celular: "11999999999", endereco: "Endereço para conferir a rolagem", responsavel_nome: "Responsável do cadastro", cliente: true, fornecedor: true, ativo: true };
+        const generic = { id: "cadastro", empresa_id: company, nome: "Cadastro com nome longo para conferir a rolagem horizontal", descricao: "Cadastro de conferência", documento: "12345678901", celular: "11999999999", endereco: "Endereço para conferir a rolagem", responsavel_nome: "Responsável do cadastro", cliente: true, fornecedor: true, ativo: url.pathname !== "/formas-pagamento" };
         return route.fulfill({ json: { data: url.pathname === "/lancamentos" ? rows : url.pathname.startsWith("/admin") || ["/caixa", "/movimentacoes"].includes(url.pathname) ? [] : [generic], meta: { total: 2, pagina: 1, paginas: 1 }, saldo_atual: 0 } });
     });
     const output = process.env.AUDIT_OUTPUT;
@@ -53,7 +53,20 @@ async function run() {
                             const bounds = await wrap.boundingBox(), button = await trash.boundingBox();
                             assert.ok(bounds && button && button.x >= bounds.x && button.x + button.width <= bounds.x + bounds.width + 1, `${path}: lixeira na borda visível`);
                         }
-                        assert.ok(await page.locator("td.delete-actions").first().evaluate(el => el.getBoundingClientRect().width >= 48), "espaço reservado para lixeira");
+                        const appearance = await page.locator("td.delete-actions").first().evaluate(el => {
+                            const button = el.querySelector("button")!;
+                            const cell = el.getBoundingClientRect(), icon = button.getBoundingClientRect();
+                            return { width: cell.width, left: icon.left - cell.left, right: cell.right - icon.right,
+                                background: getComputedStyle(el).backgroundColor,
+                                siblingBackground: getComputedStyle(el.parentElement!.querySelector("td")!).backgroundColor };
+                        });
+                        assert.ok(appearance.width <= 45 && appearance.width >= 44, `reserva compacta: ${appearance.width}`);
+                        assert.ok(Math.abs(appearance.left - appearance.right) < 1, "padding simétrico");
+                        assert.equal(appearance.background, appearance.siblingBackground, "fundo acompanha o hover da linha");
+                        await page.mouse.move(2, 2);
+                        await trash.focus();
+                        const focused = await trash.evaluate(el => [getComputedStyle(el.parentElement!).backgroundColor, getComputedStyle(el.closest("tr")!.querySelector("td")!).backgroundColor]);
+                        assert.equal(focused[0], focused[1], "fundo acompanha o foco da linha");
                     }
                     await page.locator(".list-heading > .button-primary").click();
                     const dialog = page.getByRole("dialog"); await dialog.locator(".form-grid").waitFor();

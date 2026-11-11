@@ -2907,6 +2907,8 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .data-table tr:hover .row-delete, .data-table tr:focus-within .row-delete { opacity: 1; pointer-events: auto; }
 .data-table .delete-actions .row-delete:hover { background: var(--delete-hover-background); color: var(--delete-foreground); }
 .data-table .delete-actions .row-delete:disabled { cursor: not-allowed; }
+.data-table td.delete-actions:has(> .row-delete:only-child) { width: 44px; min-width: 44px; max-width: 44px; padding: 7px; text-align: center; }
+.data-table td.delete-actions > .row-delete:only-child { position: static; transform: none; margin: 0; }
 .settlement-table .delete-actions { width: 48px; }
 .message-box { border: 1px solid var(--panel-border); color: #26362e; }
 .message-box::backdrop { background: #12271f61; backdrop-filter: blur(3px); }

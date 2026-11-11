@@ -1,11 +1,13 @@
 .resource-lancamentos .balance-cell { min-width: 0; white-space: normal; }
 .resource-lancamentos .balance-cell small { white-space: normal; overflow-wrap: anywhere; }
-.resource-table:not(.resource-lancamentos) td.delete-actions { position: sticky; right: 0; z-index: 2; width: 48px; min-width: 48px; background: #fff; box-shadow: -4px 0 7px #103e4710; }
-.resource-table:not(.resource-lancamentos) .action-head { position: sticky; right: 0; z-index: 3; min-width: 48px; }
+.resource-table:not(.resource-lancamentos) td.delete-actions { position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -4px 0 7px #103e4710; }
+.resource-table:not(.resource-lancamentos) .action-head { position: sticky; right: 0; z-index: 3; width: 44px; min-width: 44px; max-width: 44px; padding-inline: 7px; }
+.resource-table:not(.resource-lancamentos) tbody tr:is(:hover, :focus-within) td.delete-actions { background: var(--accent-soft); }
 .resource-table:not(.resource-lancamentos) .income-row td.delete-actions { background: var(--income-soft); }
 .resource-table:not(.resource-lancamentos) .expense-row td.delete-actions { background: var(--expense-soft); }
 .resource-table:not(.resource-lancamentos) .inactive-payment-form td.delete-actions { background: #eef0ef; }
-.page-lancamentos .resource-lancamentos td.launch-actions { text-align: left; }
+.resource-table:not(.resource-lancamentos) .inactive-payment-form:hover td.delete-actions { background: #e3e7e5; }
+.page-lancamentos .resource-lancamentos td.launch-actions { text-align: left; padding-right: 7px; }
 .page-lancamentos .resource-lancamentos td.launch-actions > .row-delete { position: static; transform: none; display: inline-flex; vertical-align: middle; margin-left: 3px; }
 .data-table .mobile-action-toggle { display: none !important; }
 .mobile-account-menu { position: fixed; z-index: 1000; width: 220px; max-width: calc(100vw / var(--app-zoom, 1) - 16px); max-height: calc(100dvh / var(--app-zoom, 1) - 16px); overflow: auto; padding: 6px; border: 1px solid #97b6ac; border-radius: 9px; background: #fff; box-shadow: 0 6px 24px #103e4738; }

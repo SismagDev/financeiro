@@ -7,8 +7,8 @@ import { Combobox } from "./Combobox";
 import { Icon } from "./Icon";
 import { EmptyState } from "./EmptyState";
 import { Status } from "./Status";
-import type { ListMeta, OptionLoader, Resource, Row } from "../types";
-import { netAmount } from "../utils/accounts";
+import type { Company, ListMeta, OptionLoader, Resource, Row } from "../types";
+import { accountDueUrgency, netAmount } from "../utils/accounts";
 
 type Filters = {
     formaPagamento: string;
@@ -30,6 +30,7 @@ function formatDocument(value: Row[string]) {
 }
 type Props = {
     resource: Resource;
+    companies: Company[];
     meta: ListMeta;
     sort: { key: string; direction: "asc" | "desc" };
     onSort: (key: string) => void;
@@ -45,6 +46,7 @@ type Props = {
     onDailyCash: () => void;
     onImportDailyCash?: () => void;
     onEdit: (row: Row) => void;
+    onClone: (row: Row) => void;
     onDelete: (row: Row) => void;
     onSettle: (row: Row) => void;
     onQuickSettle: (row: Row, paymentForm: string) => Promise<boolean>;
@@ -63,6 +65,7 @@ type Props = {
 
 export function ResourcePage({
     resource,
+    companies,
     meta, sort, onSort, onPageChange, loadOptions,
     companyFilter,
     visibleRows,
@@ -74,6 +77,7 @@ export function ResourcePage({
     onDailyCash,
     onImportDailyCash,
     onEdit,
+    onClone,
     onDelete,
     onSettle,
     onQuickSettle,
@@ -292,13 +296,15 @@ export function ResourcePage({
                             </tr>
                         </thead>
                         <tbody>
-                            {visibleRows.map((row, index) => (
+                            {visibleRows.map((row, index) => {
+                                const urgency = showSettlement ? accountDueUrgency(row, companies.find(company => company.id === row.empresa_id)) : null;
+                                return (
                                 <tr
                                     className={
                                         showSettlement
                                             ? row.tipo === "receber"
-                                                ? "income-row"
-                                                : "expense-row"
+                                                ? `income-row ${urgency ? "due-" + urgency.level : ""}`
+                                                : `expense-row ${urgency ? "due-" + urgency.level : ""}`
                                             : resource.key === "baixas"
                                               ? row.origem === "recebimentos" ? "income-row" : "expense-row"
                                               : resource.key === "formas" && row.ativo === false ? "inactive-payment-form" : ""
@@ -313,7 +319,9 @@ export function ResourcePage({
                                 >
                                     {columns.map(([key]) => (
                                         <td key={key} className={`${columnClass(key)} ${showSettlement ? "account-col-" + key : ""}`}>
-                                            {key === "descricao" && showSettlement ? (
+                                            {key === "data_vencimento" && showSettlement && urgency ? (
+                                                <div className="account-due-date"><span>{formatValue(key, row[key])}</span><small className="due-label">{urgency.label}</small></div>
+                                            ) : key === "descricao" && showSettlement ? (
                                                 <div className="account-description">
                                                     <span className="account-description-text" title={formatValue(key, row[key])}>{formatValue(key, row[key])}</span>
                                                     {Number(row.total_parcelas) > 1 && (
@@ -324,8 +332,8 @@ export function ResourcePage({
                                                     {row.num_doc && <small className="installment-tag document-tag" title={`Num DOC: ${row.num_doc}`}>Doc {row.num_doc}</small>}
                                                 </div>
                                             ) : key === "saldo" && showSettlement ? (
-                                                <div className="balance-cell">{row.status === "pago" ? <Status value={row.status} /> : <b>{formatValue(key, row[key])}</b>}
-                                                    <small>{row.data_ultima_baixa ? (row.status === "pago" ? "Quitação: " : "Última baixa: ") + formatValue("data_ultima_baixa", row.data_ultima_baixa) : "Sem pagamento"}</small>
+                                                <div className="balance-cell">{row.status === "pago" || row.status === "cancelado" ? <Status value={row.status} /> : <b>{formatValue(key, row[key])}</b>}
+                                                    <small>{row.status === "cancelado" ? "Conta cancelada" : row.data_ultima_baixa ? (row.status === "pago" ? "Quitação: " : "Última baixa: ") + formatValue("data_ultima_baixa", row.data_ultima_baixa) : "Sem pagamento"}</small>
                                                 </div>
                                             ) : key === "pessoa_id" && row.pessoa_nome ? (<span>{row.pessoa_nome}</span>
                                             ) : key === "plano_conta_id" && row.plano_conta_descricao ? (<span>{row.plano_conta_descricao}</span>
@@ -399,12 +407,14 @@ export function ResourcePage({
                                                 <button type="button" className="quick-settlement-button" title="Baixa rápida" aria-label="Baixa rápida" disabled={busy}
                                                     onClick={() => setQuickSettlement({ row, paymentForm: "" })}><Icon name="bolt" size={18} /></button>
                                         )}
+                                        {showSettlement && <button type="button" className="clone-row-button" title="Clonar conta" aria-label={`Clonar conta: ${row.descricao}`} disabled={busy}
+                                            onClick={() => onClone(row)}><Icon name="copy" size={17} /></button>}
                                         {!(showSettlement && quickAccount?.id === row.id && quickAccount?.empresa_id === row.empresa_id) && <button className="row-delete" aria-label="Excluir registro" title="Excluir" onClick={() => onDelete(row)}>
                                             <Icon name="trash" size={16} />
                                         </button>}
                                     </td>
                                 </tr>
-                            ))}
+                            ); })}
                         </tbody>
                     </table>
                     {loading ? (

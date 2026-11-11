@@ -9,6 +9,18 @@ import { alphabeticalOrder } from "../utils/alphabetical-order";
 
 const identificacao = z.string().regex(/^\d{11}(\d{3})?$/);
 const empresaSchema = z.object({ nome: z.string().trim().min(2).max(200), cnpj: identificacao.nullable().optional() }).strict();
+const settingsSchema = empresaSchema.extend({
+    caixa_data_inicio: z.string().date().nullable().optional(),
+    contas_modo_valor: z.enum(["total", "parcela"]).optional(),
+    vencimento_dias_urgente: z.number().int().min(0).max(365).optional(),
+    vencimento_dias_atencao: z.number().int().min(1).max(365).optional(),
+    avisar_contas_vencidas: z.boolean().optional(),
+}).superRefine((data, context) => {
+    if ((data.vencimento_dias_urgente === undefined) !== (data.vencimento_dias_atencao === undefined) ||
+        (data.vencimento_dias_urgente !== undefined && data.vencimento_dias_atencao !== undefined && data.vencimento_dias_atencao <= data.vencimento_dias_urgente)) {
+        context.addIssue({ code: "custom", path: ["vencimento_dias_atencao"], message: "Informe os dois limites de vencimento; o segundo deve ser maior que o primeiro." });
+    }
+});
 const router = Router();
 router.use(attachCurrentUser);
 
@@ -30,6 +42,7 @@ router.get("/", async (req: Request, res: Response) => {
         const result = await pool.query(
             `SELECT e.id, e.nome, e.cnpj, e.identificador, e.ativo, ue.perfil, e.licenca_expira_em,
              to_char(e.caixa_data_inicio AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS caixa_data_inicio,
+             e.contas_modo_valor, e.vencimento_dias_urgente, e.vencimento_dias_atencao, e.avisar_contas_vencidas,
              CASE WHEN e.licenca_expira_em > CURRENT_TIMESTAMP THEN 'ativa' ELSE 'vencida' END AS licenca_status FROM empresas e
              JOIN users_empresas ue ON ue.empresa_id = e.id WHERE ue.user_id = $1 AND e.ativo = TRUE ORDER BY ${alphabeticalOrder("e.nome")} ASC, e.id ASC`,
             [req.currentUser?.id],
@@ -59,7 +72,7 @@ router.post("/", requireRole("admin"), async (req: Request, res: Response) => {
 
 router.patch("/:empresaId", requireEmpresa, async (req: Request, res: Response) => {
     const empresaId = z.string().uuid().safeParse(req.params.empresaId);
-    const parsed = empresaSchema.extend({ caixa_data_inicio: z.string().date().nullable().optional() }).safeParse(req.body);
+    const parsed = settingsSchema.safeParse(req.body);
     if (!empresaId.success) return res.status(400).json({ message: "ID de empresa inválido" });
     if (req.empresaId !== empresaId.data) return res.status(403).json({ message: "A empresa da requisição não corresponde à empresa selecionada" });
     if (!parsed.success) return res.status(400).json(formatarErroZod(parsed.error));
@@ -77,6 +90,10 @@ router.patch("/:empresaId", requireEmpresa, async (req: Request, res: Response) 
             nome: parsed.data.nome,
             ...(globalAdmin && cnpjRequested ? { cnpj: parsed.data.cnpj ?? null } : {}),
             caixa_data_inicio: parsed.data.caixa_data_inicio,
+            contas_modo_valor: parsed.data.contas_modo_valor,
+            vencimento_dias_urgente: parsed.data.vencimento_dias_urgente,
+            vencimento_dias_atencao: parsed.data.vencimento_dias_atencao,
+            avisar_contas_vencidas: parsed.data.avisar_contas_vencidas,
         });
         if (!result.rowCount) return res.status(404).json({ message: "Empresa não encontrada" });
         return res.status(200).json({ id: result.rows[0].id });

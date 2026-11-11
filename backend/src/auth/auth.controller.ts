@@ -12,6 +12,7 @@ import { userRoles } from "./auth.types";
 import z from "zod";
 import { hashPassword } from "../utils/passwords";
 import { gerarMensagemErroController } from "../utils/error";
+import { formatarErroZod } from "../utils/zod";
 
 export async function registerUser(req: Request, res: Response) {
     try {
@@ -155,9 +156,9 @@ export async function update(req: Request, res: Response) {
 
             const user = await authenticateUserService(data.email, data.senha, true);
 
-            if (typeof user === "string") {
+            if (typeof user === "string" || user.id !== usuarioLogado?.id) {
                 return res.status(401).json({
-                    message: user,
+                    message: AUTH_MESSAGES.INVALID_CREDENTIALS,
                 });
             }
         }
@@ -198,12 +199,9 @@ export async function update(req: Request, res: Response) {
 }
 
 export async function login(req: Request, res: Response) {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-        await new Promise((r) => setTimeout(r, 2000)); // aguarda 2 segundos
-        return res.status(400).json({ message: AUTH_MESSAGES.EMAIL_AND_PASSWORD_REQUIRED });
-    }
+    const parsed = z.object({ email: z.string().trim().min(1).max(254), password: z.string().min(1).max(254) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ...formatarErroZod(parsed.error), message: AUTH_MESSAGES.EMAIL_AND_PASSWORD_REQUIRED });
+    const { email, password } = parsed.data;
 
     try {
         const user = await authenticateUserService(email, password);

@@ -7,7 +7,7 @@ import { DailyCashImport, type DailyCashImportHandle } from "./components/DailyC
 import { CompanySelect } from "./components/CompanySelect";
 import { companyRows, toggleCompany } from "./utils/companies";
 import { netAmount, remainingAmount, settlementPrincipal } from "./utils/accounts";
-import { accountFormSnapshot } from "./utils/account-form";
+import { accountFormSnapshot, cloneAccountValues } from "./utils/account-form";
 import { useModalScrollLock } from "./hooks/useModalScrollLock";
 import { Icon } from "./components/Icon";
 import { baixasResource, pageFromPath, pagePaths, resources } from "./data/resources";
@@ -41,7 +41,7 @@ async function api(path: string, options: RequestInit = {}, empresaId?: string) 
     if (empresaId) headers.set("x-empresa-id", empresaId);
     const response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
     const body = response.status === 204 ? null : await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.message || "Não foi possível concluir a solicitação.");
+    if (!response.ok) throw Object.assign(new Error(body?.message || "Não foi possível concluir a solicitação."), { status: response.status });
     return body;
 }
 
@@ -240,7 +240,7 @@ function App() {
     useEffect(() => {
         try { localStorage.setItem("fluxo-dashboard-year", String(dashboardYear)); } catch { /* Mantém a escolha durante a sessão. */ }
     }, [dashboardYear]);
-    const [alerts, setAlerts] = useState<{ scope: string; overdue: number; overdueRows: Row[] } | null>(null);
+    const [alerts, setAlerts] = useState<{ scope: string; overdue: number; automaticOverdue?: number; overdueRows: Row[] } | null>(null);
     const alertVersion = useRef(0);
     const requestController = useRef<AbortController | null>(null);
     const [pagination, setPagination] = useState({ key: "", page: 1 });
@@ -264,17 +264,25 @@ function App() {
         initialAccountForm.current = null; accountForm.current = null;
         setPendingSettlements([]); setEditedAmounts(null);
         if (next === "create" || next === "daily-cash") { setFormCompany(companyFilter || selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
+        if (next === "company-edit") { setFormCompany(companyFilter || company?.id || ""); setSelectedRow(null); }
         setCreatedSettlementAccount(null);
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
+    const settingsCompany = companies.find(item => item.id === formCompanyId) || company;
+    function changeFormCompany(id: string) {
+        formVersion.current++;
+        setFormCompany(id);
+        if (modal === "create" && selectedRow) setSelectedRow({ ...selectedRow, empresa_id: id,
+            pessoa_id: null, pessoa_nome: null, plano_conta_id: null, plano_conta_descricao: null, banco_id: null, banco_descricao: null });
+    }
     const initializeAccountForm = useCallback((form: HTMLFormElement) => {
         accountForm.current = form;
         initialAccountForm.current ??= accountFormSnapshot(form, formCompanyId);
     }, [formCompanyId]);
     const formLookups = useMemo(() => {
         const data = companyRows(lookups, selectedCompanyIds, formCompanyId);
-        if (selectedRow) for (const [key, idField, labelField] of [["pessoas", "pessoa_id", "pessoa_nome"], ["planos", "plano_conta_id", "plano_conta_descricao"], ["bancos", "banco_id", "banco_descricao"], ["formas", "forma_pagamento_id", "forma_pagamento_descricao"], ["lancamentos", "lancamento_id", "descricao"]]) {
+        if (selectedRow && selectedRow.empresa_id === formCompanyId) for (const [key, idField, labelField] of [["pessoas", "pessoa_id", "pessoa_nome"], ["planos", "plano_conta_id", "plano_conta_descricao"], ["bancos", "banco_id", "banco_descricao"], ["formas", "forma_pagamento_id", "forma_pagamento_descricao"], ["lancamentos", "lancamento_id", "descricao"]]) {
             if (selectedRow[idField] && selectedRow[labelField] && !(data[key] || []).some(row => row.id === selectedRow[idField]))
                 data[key] = [...(data[key] || []), { id: selectedRow[idField], nome: selectedRow[labelField], descricao: selectedRow[labelField], empresa_id: formCompanyId }];
         }
@@ -334,9 +342,10 @@ function App() {
     const dashboardScopeKey = `${scopeKey}:${dashboardYear}`;
     const overdueRows = alerts?.scope === scopeKey ? alerts.overdueRows : EMPTY_ROWS;
     const overdue = alerts?.scope === scopeKey ? Number(alerts.overdue) : 0;
+    const automaticOverdue = alerts?.scope === scopeKey ? Number(alerts.automaticOverdue ?? 0) : 0;
     useEffect(() => {
-        if (!user || !company || loadedCompanyId !== company.id || !overdue || modal || company.licenca_status === "vencida") return;
-        const key = "fluxo-overdue-warning:" + user.id + ":" + company.id;
+        if (!user || !company || loadedCompanyId !== scopeKey.split(",")[0] || !automaticOverdue || modal || company.licenca_status === "vencida") return;
+        const key = "fluxo-overdue-warning:" + user.id + ":" + scopeKey;
         const frame = window.requestAnimationFrame(() => {
             if (activeCompanyId.current !== company.id || warningMemory.current[key] === warningDay) return;
             let last = warningMemory.current[key];
@@ -347,7 +356,7 @@ function App() {
             try { localStorage.setItem(key, warningDay); } catch { /* A abertura manual permanece disponível. */ }
         });
         return () => window.cancelAnimationFrame(frame);
-    }, [user, company, loadedCompanyId, overdue, warningDay, modal]);
+    }, [user, company, scopeKey, loadedCompanyId, automaticOverdue, warningDay, modal]);
     useEffect(() => {
         if (!companyMenu && !notificationsOpen) return;
         const outside = (event: PointerEvent) => {
@@ -466,7 +475,7 @@ function App() {
         try {
             const result = await api(pageQuery, { signal: controller.signal }, scopeKey.split(",")[0]);
             if (version !== loadVersion.current) return;
-            if (page === "dashboard") { setSummary({ scope: dashboardScopeKey, ...result.data }); setAlerts({ scope: scopeKey, overdue: Number(result.data.overdue), overdueRows: result.data.overdueRows }); }
+            if (page === "dashboard") { setSummary({ scope: dashboardScopeKey, ...result.data }); setAlerts({ scope: scopeKey, overdue: Number(result.data.overdue), automaticOverdue: Number(result.data.automaticOverdue || 0), overdueRows: result.data.overdueRows }); }
             else setListResult({ key: filterKey, data: result.data, meta: result.meta, balance: Number(result.saldo_atual || 0) });
             setLoadedCompanyId(scopeKey.split(",")[0]);
         } catch (error) {
@@ -604,6 +613,30 @@ function App() {
             setModal("edit");
         } catch (error) {
             if (version === formVersion.current) notify(error instanceof Error ? error.message : "Não foi possível localizar a conta.", "error");
+        }
+    }
+
+    async function cloneAccount(row: Row) {
+        const version = ++formVersion.current;
+        try {
+            const result = await api(`/lancamentos/${row.id}`, {}, String(row.empresa_id));
+            if (version !== formVersion.current) return;
+            const values = cloneAccountValues(result.data);
+            if (values.banco_id) {
+                try {
+                    const bank = await api(`/bancos/${values.banco_id}`, {}, String(row.empresa_id));
+                    values.banco_descricao = bank.data.descricao;
+                } catch (error) {
+                    if (!(error instanceof Error && "status" in error && error.status === 404)) throw error;
+                    values.banco_id = null; values.banco_descricao = null;
+                }
+            }
+            if (version !== formVersion.current) return;
+            setModal("create", result.data.tipo);
+            setFormCompany(String(result.data.empresa_id));
+            setSelectedRow(values);
+        } catch (error) {
+            if (version === formVersion.current) notify(error instanceof Error ? error.message : "Não foi possível clonar a conta.", "error");
         }
     }
 
@@ -847,16 +880,24 @@ function App() {
 
     async function updateCompany(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!company) return;
+        if (!settingsCompany || busy) return;
         setBusy(true);
         const values = Object.fromEntries(new FormData(event.currentTarget));
+        const target = settingsCompany;
         try {
-            await api(`/empresas/${company.id}`, {
+            await api(`/empresas/${target.id}`, {
                 method: "PATCH",
-                body: JSON.stringify({ nome: values.nome, caixa_data_inicio: values.caixa_data_inicio || null, ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
-            }, company.id);
-            await loadCompanies(user?.id);
-            if (page === "caixa") await fetchResources();
+                body: JSON.stringify({ nome: values.nome, caixa_data_inicio: values.caixa_data_inicio || null,
+                    contas_modo_valor: values.contas_modo_valor, vencimento_dias_urgente: Number(values.vencimento_dias_urgente),
+                    vencimento_dias_atencao: Number(values.vencimento_dias_atencao), avisar_contas_vencidas: values.avisar_contas_vencidas === "on",
+                    ...(user?.role === "admin" ? { cnpj: values.cnpj || null } : {}) }),
+            }, target.id);
+            const result = await api("/empresas");
+            const updated: Company[] = result.data || [];
+            setCompanies(updated);
+            setCompany(current => updated.find(item => item.id === current?.id) || current);
+            if (page === "caixa" && (values.caixa_data_inicio || null) !== (target.caixa_data_inicio || null)) await fetchResources();
+            if ((values.avisar_contas_vencidas === "on") !== (target.avisar_contas_vencidas !== false)) await fetchAlerts();
             setModal(null);
             notify("Dados da empresa atualizados.");
         } catch (e) {
@@ -996,7 +1037,7 @@ function App() {
                                     onChange={() => changeCompany(item)} />
                                 <span>{item.nome}{item.licenca_status === "vencida" && <small> · Licença vencida</small>}</span>
                             </label>)}
-                           <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); }}><Icon name="edit" size={16} /> Configurações da empresa</button>
+                           <button className="add-company" onClick={() => { setModal("company-edit"); setCompanyMenu(false); setMobileNav(false); }}><Icon name="edit" size={16} /> Configurações da empresa</button>
                         </div>
                     )}
                     <nav className="nav-scroll">
@@ -1211,6 +1252,7 @@ function App() {
                             <ResourcePage
                                 key={company.id + resource.key}
                                 resource={resource}
+                                companies={companies}
                                 meta={listMeta}
                                 sort={sort}
                                 onSort={key => setSorting({ page, key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" })}
@@ -1240,6 +1282,7 @@ function App() {
                                     setModal("edit");
                                 }}
                                 onDelete={removeRow}
+                                onClone={cloneAccount}
                                 lancamentoFilters={page === "lancamentos" ? lancamentoFilters : undefined}
                                 onLancamentoFiltersChange={
                                     page === "lancamentos" ? setLancamentoFilters : undefined
@@ -1279,7 +1322,7 @@ function App() {
                                               ? "BAIXA DA CONTA"
                                               : modal === "edit"
                                                 ? "EDITAR REGISTRO"
-                                                : "NOVO CADASTRO"}
+                                                : modal === "create" && resource?.key === "lancamentos" && selectedRow ? "CLONAR CONTA" : "NOVO CADASTRO"}
                                     </span>
                                     <h2>
                                         {modal === "cash-import" ? "Importar caixa diário" : modal === "daily-cash" ? "Caixa Diário" : modal === "company"
@@ -1299,7 +1342,7 @@ function App() {
                                     </h2>
                                 </div>
                                 {(modal === "daily-cash" || modal === "create" && resource?.key === "lancamentos") && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
-                                    value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
+                                    value={formCompanyId} onChange={changeFormCompany} disabled={busy} form />}
                                 <button className="icon-button" aria-label="Fechar cadastro" onClick={() => void requestCloseModal()}>
                                     <Icon name="close" />
                                 </button>
@@ -1311,8 +1354,10 @@ function App() {
                                     <AccountSettlements reloadKey={detailsRevision} loadOptions={loadFormOptions} loadSettlements={loadAccountSettlements} account={currentAccount} data={dashboardData} busy={busy} formatValue={displayValue}
                                         onRemove={removeSettlement} onSettle={() => setSettlementOverlay(true)} />
                                 </div>
-                            ) : modal === "company-edit" ? (
-                                <form onSubmit={updateCompany} className="record-form">
+                            ) : modal === "company-edit" && settingsCompany ? (
+                                <form key={settingsCompany.id} onSubmit={updateCompany} className="record-form company-settings-form">
+                                    <CompanySelect companies={selectedCompanies} visible={companies.length > 1} value={settingsCompany.id}
+                                        onChange={id => { formVersion.current++; setFormCompany(id); }} disabled={busy} form />
                                     <label className="form-field full-field">
                                         Nome da empresa
                                         <input
@@ -1321,15 +1366,35 @@ function App() {
                                             minLength={2}
                                             maxLength={200}
                                             required
-                                            defaultValue={company.nome}
+                                            defaultValue={settingsCompany.nome}
                                             autoFocus
                                         />
-                                    </label>{user?.role === "admin" && <label className="form-field full-field">CPF/CNPJ <span className="optional-label">Opcional</span><input name="cnpj" inputMode="numeric" maxLength={14} placeholder="Somente números" pattern="[0-9]{11}([0-9]{3})?" defaultValue={company.cnpj || ""} /></label>}
+                                    </label>{user?.role === "admin" && <label className="form-field full-field">CPF/CNPJ <span className="optional-label">Opcional</span><input name="cnpj" inputMode="numeric" maxLength={14} placeholder="Somente números" pattern="[0-9]{11}([0-9]{3})?" defaultValue={settingsCompany.cnpj || ""} /></label>}
                                     <label className="form-field full-field">
                                         Início da contabilização do caixa <span className="optional-label">Opcional</span>
-                                        <input name="caixa_data_inicio" type="date" defaultValue={company.caixa_data_inicio || ""} />
+                                        <input name="caixa_data_inicio" type="date" defaultValue={settingsCompany.caixa_data_inicio || ""} />
                                         <small>O caixa considera somente baixas nesta data ou posteriores. Em branco, considera todo o histórico.</small>
                                     </label>
+                                    <label className="form-field full-field">Valor inicial no cadastro de contas
+                                        <select name="contas_modo_valor" defaultValue={settingsCompany.contas_modo_valor || "total"}>
+                                            <option value="total">Valor total da operação</option><option value="parcela">Valor de cada parcela</option>
+                                        </select>
+                                        <small>Preferência para novas contas. Pode ser alterada em cada cadastro.</small>
+                                    </label>
+                                    <fieldset className="company-due-settings"><legend>Destaques de vencimento</legend>
+                                        <p>Somente contas em aberto. Vencidas e vencendo hoje sempre recebem o destaque forte.</p>
+                                        <div className="form-grid">
+                                            <label className="form-field">Forte: até (dias)
+                                                <input type="number" name="vencimento_dias_urgente" required min="0" max="364" step="1" defaultValue={settingsCompany.vencimento_dias_urgente ?? 1}
+                                                    onChange={event => { const next = event.currentTarget.form?.elements.namedItem("vencimento_dias_atencao") as HTMLInputElement | null; if (next) next.min = String(Number(event.target.value) + 1); }} />
+                                            </label>
+                                            <label className="form-field">Intermediário: até (dias)
+                                                <input type="number" name="vencimento_dias_atencao" required min={(settingsCompany.vencimento_dias_urgente ?? 1) + 1} max="365" step="1" defaultValue={settingsCompany.vencimento_dias_atencao ?? 7} />
+                                            </label>
+                                        </div>
+                                        <small>O segundo limite deve ser maior que o primeiro. Após ele, a conta mantém a cor normal.</small>
+                                    </fieldset>
+                                    <label className="detail-toggle company-overdue-setting"><input type="checkbox" name="avisar_contas_vencidas" defaultChecked={settingsCompany.avisar_contas_vencidas !== false} /> Abrir o aviso de contas vencidas uma vez ao dia</label>
                                     <div className="modal-actions">
                                         <button
                                             type="button"
@@ -1350,8 +1415,9 @@ function App() {
                             ) : (
                                 <div className={modal === "edit" && resource?.key === "lancamentos" ? "account-edit-layout" : undefined}>
                                 <form onSubmit={saveRecord} className="record-form">
+                                    {modal === "create" && resource?.key === "lancamentos" && selectedRow && <p className="field-hint clone-notice">Cópia independente, sem baixas. Revise os dados e o vencimento antes de gravar.</p>}
                                     {modal === "create" && resource?.key !== "lancamentos" && <CompanySelect companies={selectedCompanies} visible={companies.length > 1}
-                                        value={formCompanyId} onChange={id => { formVersion.current++; setFormCompany(id); }} form />}
+                                        value={formCompanyId} onChange={changeFormCompany} disabled={busy} form />}
                                     {resource && (
                                         <RecordFormFields
                                             key={String(selectedRow?.id || resource.key) + modal}
@@ -1361,6 +1427,7 @@ function App() {
                                             selectedRow={selectedRow}
                                             lookups={formLookups}
                                             companyId={formCompanyId}
+                                            initialValueMode={companies.find(item => item.id === formCompanyId)?.contas_modo_valor || "total"}
                                             editing={modal === "edit"}
                                             fixedType={modal === "create" ? createAccountType : undefined}
                                             onReady={resource.key === "lancamentos" ? initializeAccountForm : undefined}

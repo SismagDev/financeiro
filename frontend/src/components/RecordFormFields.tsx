@@ -9,7 +9,7 @@ import { AccountValueInput } from "./AccountValue";
 import { useMessageBox } from "../hooks/useMessageBox";
 import { BankPaymentFields } from "./BankPaymentFields";
 
-type Props = { companyId?: string; fields: Field[]; selectedRow: Row | null; lookups: Record<string, Row[]>; editing: boolean; fixedType?: "pagar" | "receber"; children?: ReactNode; onCreatePerson?: (values: Row) => Promise<Row>; loadOptions?: OptionLoader; onReady?: (form: HTMLFormElement) => void; onValueChange?: (values: Row) => void };
+type Props = { companyId?: string; initialValueMode?: "total" | "parcela"; fields: Field[]; selectedRow: Row | null; lookups: Record<string, Row[]>; editing: boolean; fixedType?: "pagar" | "receber"; children?: ReactNode; onCreatePerson?: (values: Row) => Promise<Row>; loadOptions?: OptionLoader; onReady?: (form: HTMLFormElement) => void; onValueChange?: (values: Row) => void };
 function PersonRoles({ selectedRow }: Pick<Props, "selectedRow">) {
     const [roles, setRoles] = useState({ cliente: Boolean(selectedRow?.cliente), fornecedor: Boolean(selectedRow?.fornecedor) });
     return <fieldset className="role-field full-field"><legend>Esta pessoa é <small>(selecione ao menos uma opção)</small></legend>
@@ -35,24 +35,34 @@ function SelectField({ field, selectedRow, lookups, editing, loadOptions }: Omit
         } : undefined} />;
 }
 function InputField({ field, selectedRow }: Pick<Props, "selectedRow"> & { field: Field }) { const isInstallment = field.name === "parcelas"; const isNumber = field.type === "number"; return <><input name={field.name} type={field.type || "text"} required={field.required} step={isInstallment ? "1" : isNumber ? "0.01" : undefined} min={isInstallment ? "1" : isNumber ? "0.01" : undefined} max={isInstallment ? "60" : undefined} maxLength={isNumber || field.type === "date" ? undefined : field.maxLength || 200} defaultValue={field.type === "date" ? dateInputValue(selectedRow?.[field.name]) : String(selectedRow?.[field.name] ?? (isInstallment ? "1" : ""))} placeholder={isInstallment ? "1" : isNumber ? "0,00" : field.type === "date" ? "" : `Informe ${field.label.toLowerCase()}`} />{isInstallment && <small className="field-hint">1 para à vista. No parcelamento simples, o intervalo padrão é de 30 dias.</small>}</>; }
-export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedType, children, onCreatePerson, companyId, loadOptions, onReady, onValueChange }: Props) {
+export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedType, children, onCreatePerson, companyId, initialValueMode = "total", loadOptions, onReady, onValueChange }: Props) {
     const grid = useRef<HTMLDivElement>(null);
     useEffect(() => { const form = grid.current?.closest("form"); if (form) onReady?.(form); }, [onReady]);
     const launch = fields.some((field) => field.name === "parcelas");
     const settlement = fields.some(field => field.name === "lancamento_id");
     const isLancamento = launch && !editing;
     const documentField = fields.find(field => field.name === "num_doc");
-    const [due, setDue] = useState(() => isLancamento ? localDateInputValue() : dateInputValue(selectedRow?.data_vencimento));
-    const [competence, setCompetence] = useState(() => competenceLabel(isLancamento ? localDateInputValue() : selectedRow?.competencia || selectedRow?.data_vencimento));
+    const dependentRow = selectedRow?.empresa_id && selectedRow.empresa_id !== companyId ? null : selectedRow;
+    const [due, setDue] = useState(() => dateInputValue(selectedRow?.data_vencimento) || (isLancamento ? localDateInputValue() : ""));
+    const [competence, setCompetence] = useState(() => competenceLabel(selectedRow?.competencia || selectedRow?.data_vencimento || (isLancamento ? localDateInputValue() : "")));
     const [accountType, setAccountType] = useState(String(fixedType || selectedRow?.tipo || ""));
     const [plan, setPlan] = useState({ companyId, id: String(selectedRow?.plano_conta_id || "") });
     const planId = plan.companyId === companyId ? plan.id : "";
     const [description, setDescription] = useState({ companyId, text: String(selectedRow?.descricao || "") });
-    const [mode, setMode] = useState("total"); const [detailed, setDetailed] = useState(false);
+    const [valueMode, setValueMode] = useState({ companyId, value: initialValueMode });
+    const mode = valueMode.companyId === companyId ? valueMode.value : initialValueMode;
+    const setMode = (value: "total" | "parcela") => setValueMode({ companyId, value });
+    const [detailed, setDetailed] = useState(false);
     const [installments, setInstallments] = useState("1");
     const [amounts, setAmounts] = useState<Row>({ valor: selectedRow?.valor || "" });
     const [intervals, setIntervals] = useState("");
     const [installmentEdits, setInstallmentEdits] = useState<Record<number, { valor?: string; vencimento?: string }>>({});
+    if (valueMode.companyId !== companyId) {
+        setValueMode({ companyId, value: initialValueMode });
+        setInstallmentEdits({});
+        setPlan({ companyId, id: "" });
+        setDescription({ companyId, text: "" });
+    }
     const { ask, messageBox } = useMessageBox();
     const hasEdits = Object.keys(installmentEdits).length > 0;
     const generated = isLancamento ? installmentPreview(amounts, Number(installments), mode, due, competence,
@@ -65,14 +75,14 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
         change();
     }
     const orderedFields = launch ? [...fields.filter(field => field.name === "plano_conta_id"), ...fields.filter(field => field.name !== "plano_conta_id")] : fields;
-    const formFields = <div ref={grid} className="form-grid">{orderedFields.filter((field) => !(launch && field.name === "parcelas") && !(field.type === "checkbox" && field.name === "fornecedor") && !(launch && field.name === "banco_id")).map((field) => {
+    const formFields = <div ref={grid} className="form-grid">{orderedFields.filter((field) => !(launch && field.name === "parcelas") && !(field.type === "checkbox" && field.name === "fornecedor") && !(launch && field.name === "banco_id" && !(isLancamento && dependentRow?.banco_id))).map((field) => {
         if (settlement && field.name === "forma_pagamento_id") return <BankPaymentFields key={"payment:" + companyId} banks={lookups.bancos || []} paymentForms={lookups.formas || []} loadOptions={loadOptions}
             initial={{ banco_id: String(selectedRow?.banco_id || ""), forma_pagamento_id: String(selectedRow?.forma_pagamento_id || "") }} />;
         if (launch && editing && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={String(selectedRow?.tipo || "")} />;
         if (isLancamento && fixedType && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={fixedType} />;
         if (launch && field.name === "num_doc") return null;
         if (field.type === "checkbox") return <PersonRoles key={field.name} selectedRow={selectedRow} />;
-            if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name + companyId} selectedRow={selectedRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} modalCreate={isLancamento} loadOptions={loadOptions} />;
+            if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name + companyId} selectedRow={dependentRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} modalCreate={isLancamento} loadOptions={loadOptions} />;
         if (isLancamento && field.name === "valor") return null;
         if (launch && field.name === "valor") return <AccountValueInput key={field.name} account={selectedRow} liquidOnly onChange={onValueChange} />;
         const formField = <label key={field.name} className={`form-field ${field.wide || (isLancamento && field.name === "tipo") ? "full-field" : ""}`}>{field.name === "valor" && isLancamento ? mode === "total" ? "Valor total da operação" : "Valor de cada parcela" : field.label}
@@ -94,7 +104,7 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
                     const description = String(row.descricao || "").trim();
                     return [description.toLocaleLowerCase("pt-BR"), description] as const;
                 })).values()).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR")).map(text => [text, text])} />
-            : field.type === "select" ? <SelectField key={field.source ? companyId : field.name} field={field} selectedRow={selectedRow} lookups={lookups} editing={editing} loadOptions={loadOptions} /> : <InputField field={field} selectedRow={selectedRow} />}</label>;
+            : field.type === "select" ? <SelectField key={field.source ? companyId : field.name} field={field} selectedRow={field.source ? dependentRow : selectedRow} lookups={lookups} editing={editing} loadOptions={loadOptions} /> : <InputField field={field} selectedRow={selectedRow} />}</label>;
         if (launch && field.name === "descricao" && documentField) return <div className="account-reference-fields full-field" key={field.name}>
             {formField}
             <label className="form-field">{documentField.label}<InputField field={documentField} selectedRow={selectedRow} /></label>

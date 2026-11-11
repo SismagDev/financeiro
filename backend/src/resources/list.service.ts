@@ -216,12 +216,13 @@ export async function listRecords(config: Config, query: ListQuery, ids: string[
 export async function dashboardSummary(ids: string[], day: string, year?: number) {
     const result = await pool.query(`WITH accounts AS (${launchesSql}), settlements AS (
         SELECT * FROM (${settlementsSql()}) s ${year ? "WHERE data_baixa >= $3::date AND data_baixa < $4::date" : ""}),
-        overdue AS (SELECT * FROM accounts WHERE status = 'pendente' AND data_vencimento < $2::date)
+        overdue AS (SELECT * FROM accounts WHERE status IN ('pendente', 'parcial') AND saldo > 0 AND data_vencimento < $2::date)
         SELECT json_build_object(
             'pagar', COALESCE((SELECT SUM(saldo) FROM accounts WHERE tipo = 'pagar' AND status NOT IN ('pago','cancelado')),0),
             'receber', COALESCE((SELECT SUM(saldo) FROM accounts WHERE tipo = 'receber' AND status NOT IN ('pago','cancelado')),0),
             'totalPaid', COALESCE((SELECT SUM(valor) FROM settlements),0),
             'overdue', (SELECT COUNT(*) FROM overdue),
+            'automaticOverdue', (SELECT COUNT(*) FROM overdue o JOIN empresas e ON e.id = o.empresa_id WHERE e.avisar_contas_vencidas),
             'overdueRows', COALESCE((SELECT json_agg(a) FROM (SELECT * FROM overdue ORDER BY data_vencimento, id LIMIT 5) a),'[]'::json),
             'rows', COALESCE((SELECT json_agg(a) FROM (SELECT * FROM accounts ORDER BY created_at DESC, id DESC LIMIT 6) a),'[]'::json),
             'flowRows', COALESCE((SELECT json_agg(f) FROM (SELECT tipo, date_trunc('month', data_baixa)::date::text AS data_fluxo,
@@ -232,12 +233,14 @@ export async function dashboardSummary(ids: string[], day: string, year?: number
 
 export async function alertsSummary(ids: string[], day: string) {
     const result = await pool.query(`SELECT json_build_object(
-        'overdue', (SELECT COUNT(*) FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status = 'pendente' AND data_vencimento < $2::date),
+        'overdue', (SELECT COUNT(*) FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status IN ('pendente', 'parcial') AND data_vencimento < $2::date),
+        'automaticOverdue', (SELECT COUNT(*) FROM lancamentos l JOIN empresas e ON e.id = l.empresa_id
+            WHERE l.empresa_id = ANY($1::uuid[]) AND l.status IN ('pendente', 'parcial') AND l.data_vencimento < $2::date AND e.avisar_contas_vencidas),
         'overdueRows', COALESCE((SELECT json_agg(a) FROM (
             SELECT l.*, GREATEST(0, l.valor - COALESCE(l.desconto,0) + COALESCE(l.acrescimo,0) - COALESCE((
                 SELECT SUM(valor) FROM (SELECT valor + desconto - acrescimo AS valor FROM movimentacoes m WHERE m.empresa_id = l.empresa_id AND m.lancamento_id = l.id
                     UNION ALL SELECT valor + desconto - acrescimo FROM recebimentos r WHERE r.empresa_id = l.empresa_id AND r.lancamento_id = l.id) s),0)) AS saldo
-            FROM (SELECT * FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status = 'pendente' AND data_vencimento < $2::date
+            FROM (SELECT * FROM lancamentos WHERE empresa_id = ANY($1::uuid[]) AND status IN ('pendente', 'parcial') AND data_vencimento < $2::date
                 ORDER BY data_vencimento, id LIMIT 5) l
         ) a), '[]'::json)) AS data`, [ids, day]);
     return result.rows[0];

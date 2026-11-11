@@ -171,6 +171,23 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .status-pago i, .status-true i { background: var(--income); }
 .row-delete { background: var(--danger-soft); color: var(--danger); }
 .row-delete:hover { background: var(--delete-hover-background); color: var(--danger); }
+.data-table .clone-row-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #a8c5c8; border-radius: 7px; color: #245962; background: #e5f0f1; cursor: pointer; }
+.data-table .clone-row-button:hover { background: #cee4e7; }
+.clone-row-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.clone-row-button:disabled { opacity: .55; cursor: wait; }
+.page-lancamentos .resource-lancamentos .due-attention td { background: #f9dfda; }
+.page-lancamentos .resource-lancamentos .due-urgent td { background: #f3bdb4; }
+.page-lancamentos .resource-lancamentos .due-attention:is(:hover, :focus-within) td { background: #f5d0c8 !important; }
+.page-lancamentos .resource-lancamentos .due-urgent:is(:hover, :focus-within) td { background: #eda99e !important; }
+.account-due-date { display: flex; flex-direction: column; gap: 3px; }
+.due-label { font-size: 10px; font-weight: 650; white-space: normal; color: #79271c; }
+.company-due-settings { margin: 6px 0 18px; min-width: 0; padding: 14px; border: 1px solid var(--panel-border); border-radius: 9px; }
+.company-due-settings legend { color: var(--ink); font-size: 13px; font-weight: 650; padding: 0 5px; }
+.company-due-settings p, .company-due-settings > small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.company-due-settings p { margin: 0 0 12px; }
+.company-due-settings .form-field { min-width: 0; }
+.company-overdue-setting { line-height: 1.5; }
+.clone-notice { margin: 0 0 12px; }
 
 /* Visão geral e caixa. */
 .summary-main { color: #fff; background: var(--accent-hover); border-color: var(--accent-hover); }

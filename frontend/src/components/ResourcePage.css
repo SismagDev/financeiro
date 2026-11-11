@@ -1,6 +1,10 @@
 @media (min-width: 901px) {
     .main-area > .page-content:has(.list-panel) { width: 94%; max-width: none; margin-inline: auto; }
 }
+@media (min-width: 761px) {
+    .page-lancamentos .resource-lancamentos .launch-actions { position: sticky; right: 0; z-index: 2; box-shadow: -5px 0 8px #103e4714; }
+    .page-lancamentos .resource-lancamentos .action-head { position: sticky; right: 0; z-index: 3; }
+}
 @media (max-width: 760px) {
     .resource-lancamentos { min-width: 0 !important; width: 100%; }
     .resource-lancamentos thead { display: none; }
@@ -14,7 +18,7 @@
     .resource-lancamentos .account-col-pessoa_id { grid-column: 2 / 4; grid-row: 1; }
     .resource-lancamentos .account-col-descricao { grid-column: 1 / 4; grid-row: 2; }
     .resource-lancamentos .account-description { width: 100%; flex-wrap: wrap; }
-    .resource-lancamentos .account-description-text { display: block; white-space: normal; overflow-wrap: anywhere; }
+    .resource-lancamentos .account-description-text { display: block; flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; }
     .resource-lancamentos .account-col-data_vencimento { grid-column: 1; grid-row: 3; }
     .resource-lancamentos .account-col-valor { grid-column: 2; grid-row: 3; }
     .resource-lancamentos .account-col-saldo { grid-column: 3; grid-row: 3; }

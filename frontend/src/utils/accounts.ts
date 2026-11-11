@@ -1,5 +1,16 @@
-import type { Row } from "../types";
-import { competenceDate, competenceLabel } from "./dates";
+import type { Company, Row } from "../types";
+import { competenceDate, competenceLabel, dateInputValue, localDateInputValue } from "./dates";
+
+export function accountDueUrgency(row: Row, company?: Company, today = localDateInputValue()) {
+    if (row.status === "pago" || row.status === "cancelado" || Number(row.saldo) <= 0) return null;
+    const due = dateInputValue(row.data_vencimento);
+    if (!due) return null;
+    // Datas financeiras são dias civis; UTC aqui evita diferenças de fuso e horário de verão.
+    const days = Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+    const level = days <= (company?.vencimento_dias_urgente ?? 1) ? "urgent" : days <= (company?.vencimento_dias_atencao ?? 7) ? "attention" : null;
+    if (!level) return null;
+    return { level, label: days < 0 ? `Vencida há ${-days} dia${days === -1 ? "" : "s"}` : days === 0 ? "Vence hoje" : `Vence em ${days} dia${days === 1 ? "" : "s"}` };
+}
 
 // Prévia das regras de createLaunches: vencimentos em dias, competência mensal e rateio em centavos.
 export function installmentPreview(account: Row, count: number, mode: string, due: string, competence: string, intervals?: number[]) {

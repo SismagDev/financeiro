@@ -14,6 +14,7 @@ const expiredCompany = "22222222-2222-4222-8222-222222222222";
 const userId = "33333333-3333-4333-8333-333333333333";
 const adminId = "44444444-4444-4444-8444-444444444444";
 let updates = 0;
+let userUpdates = 0;
 let companyValues: unknown[] = [];
 const originalQuery = pool.query.bind(pool);
 const originalConnect = pool.connect.bind(pool);
@@ -31,6 +32,7 @@ let passwordHash = "";
         const email = values?.[0];
         if (email === "ativo@test") return { rows: [{ id: userId, nome: "Ativo", email, password_hash: passwordHash, role: "comum", ativo: true }], rowCount: 1 };
         if (email === "inativo@test") return { rows: [{ id: userId, nome: "Inativo", email, password_hash: passwordHash, role: "comum", ativo: false }], rowCount: 1 };
+        if (email === "outra@test") return { rows: [{ id: "66666666-6666-4666-8666-666666666666", nome: "Outra pessoa", email, password_hash: passwordHash, role: "comum", ativo: true }], rowCount: 1 };
         return { rows: [], rowCount: 0 };
     }
     if (sql.includes("FROM users_empresas ue")) {
@@ -39,6 +41,7 @@ let passwordHash = "";
     }
     if (sql.includes("SELECT 1 FROM users_empresas")) return { rows: [{ ok: 1 }], rowCount: 1 };
     if (sql.includes("UPDATE empresas")) { companyValues = values || []; updates++; return { rows: [{ id: activeCompany }], rowCount: 1 }; }
+    if (sql.includes("UPDATE users")) { userUpdates++; return { rows: [{ id: userId }], rowCount: 1 }; }
     if (sql.includes("INSERT INTO users_empresas")) return { rows: [], rowCount: 1 };
     return { rows: [], rowCount: 0 };
 }) as typeof pool.query;
@@ -102,4 +105,48 @@ test("seleção multiempresa não concede acesso a empresa sem vínculo", async 
     const result = await request(`/empresas/${id}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": id }, body: JSON.stringify({ nome: "Sem acesso" }) });
     assert.equal(result.response.status, 403);
     assert.equal(updates, before);
+});
+
+test("preferências são gravadas apenas na empresa autorizada e campos omitidos são preservados", async () => {
+    const settings = { nome: "Empresa", contas_modo_valor: "parcela", vencimento_dias_urgente: 0, vencimento_dias_atencao: 10, avisar_contas_vencidas: false };
+    const options = { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: JSON.stringify(settings) };
+    assert.equal((await request(`/empresas/${activeCompany}`, options)).response.status, 200);
+    assert.deepEqual(companyValues, ["Empresa", "parcela", 0, 10, false, activeCompany]);
+    const before = updates;
+    assert.equal((await request(`/empresas/${expiredCompany}`, options)).response.status, 403);
+    assert.equal(updates, before);
+    assert.equal((await request(`/empresas/${activeCompany}`, { ...options, headers: { "x-empresa-id": activeCompany } })).response.status, 401);
+    assert.equal(updates, before);
+});
+
+test("preferências rejeitam limites incoerentes, tipos inválidos e campos extras sem escrita", async () => {
+    const before = updates;
+    for (const values of [
+        { vencimento_dias_urgente: 7, vencimento_dias_atencao: 7 }, { vencimento_dias_urgente: 8, vencimento_dias_atencao: 2 },
+        { vencimento_dias_urgente: -1, vencimento_dias_atencao: 7 }, { vencimento_dias_urgente: 1.5, vencimento_dias_atencao: 7 },
+        { vencimento_dias_urgente: 1, vencimento_dias_atencao: 366 }, { vencimento_dias_atencao: 7 },
+        { contas_modo_valor: "invalido" }, { avisar_contas_vencidas: "false" }, { perfil: "admin" },
+    ]) {
+        const result = await request(`/empresas/${activeCompany}`, { method: "PATCH", headers: { "x-test-user": userId, "x-empresa-id": activeCompany }, body: JSON.stringify({ nome: "Empresa", ...values }) });
+        assert.equal(result.response.status, 400);
+        assert.ok(Array.isArray(result.body.erros));
+    }
+    assert.equal(updates, before);
+});
+
+test("troca de credenciais exige a senha do usuário da sessão, sem aceitar outra conta", async () => {
+    const before = userUpdates;
+    const denied = await request(`/auth/${userId}`, { method: "PATCH", headers: { "x-test-user": userId }, body: JSON.stringify({ email: "outra@test", senha: "senha-correta", email_novo: "novo@test.com" }) });
+    assert.equal(denied.response.status, 401);
+    assert.equal(userUpdates, before);
+    const allowed = await request(`/auth/${userId}`, { method: "PATCH", headers: { "x-test-user": userId }, body: JSON.stringify({ email: "ativo@test", senha: "senha-correta", email_novo: "novo@test.com" }) });
+    assert.equal(allowed.response.status, 200);
+    assert.equal(userUpdates, before + 1);
+});
+
+test("login valida tipos e tamanho antes de autenticar", async () => {
+    for (const body of [{}, { email: {}, password: "senha" }, { email: "ativo@test", password: [] }, { email: "ativo@test", password: "a".repeat(255) }]) {
+        const result = await request("/auth/login", { method: "POST", body: JSON.stringify(body) });
+        assert.equal(result.response.status, 400);
+    }
 });

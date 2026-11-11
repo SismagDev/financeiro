@@ -1,11 +1,25 @@
-@media (min-width: 901px) {
-    .main-area > .page-content:has(.list-panel) { width: 94%; max-width: none; margin-inline: auto; }
-}
+.resource-lancamentos .balance-cell { min-width: 0; white-space: normal; }
+.resource-lancamentos .balance-cell small { white-space: normal; overflow-wrap: anywhere; }
+.resource-table:not(.resource-lancamentos) td.delete-actions { position: sticky; right: 0; z-index: 2; width: 48px; min-width: 48px; background: #fff; box-shadow: -4px 0 7px #103e4710; }
+.resource-table:not(.resource-lancamentos) .action-head { position: sticky; right: 0; z-index: 3; min-width: 48px; }
+.resource-table:not(.resource-lancamentos) .income-row td.delete-actions { background: var(--income-soft); }
+.resource-table:not(.resource-lancamentos) .expense-row td.delete-actions { background: var(--expense-soft); }
+.resource-table:not(.resource-lancamentos) .inactive-payment-form td.delete-actions { background: #eef0ef; }
+.page-lancamentos .resource-lancamentos td.launch-actions { text-align: left; }
+.page-lancamentos .resource-lancamentos td.launch-actions > .row-delete { position: static; transform: none; display: inline-flex; vertical-align: middle; margin-left: 3px; }
+.data-table .mobile-action-toggle { display: none !important; }
+.mobile-account-menu { position: fixed; z-index: 1000; width: 220px; max-width: calc(100vw / var(--app-zoom, 1) - 16px); max-height: calc(100dvh / var(--app-zoom, 1) - 16px); overflow: auto; padding: 6px; border: 1px solid #97b6ac; border-radius: 9px; background: #fff; box-shadow: 0 6px 24px #103e4738; }
+.mobile-account-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 0; border-radius: 5px; background: #fff; color: #17221e; text-align: left; cursor: pointer; }
+.mobile-account-menu button:is(:hover, :focus-visible) { background: #e3f1e9; outline: 2px solid #247c69; outline-offset: -2px; }
 @media (min-width: 761px) {
+    .resource-lancamentos td.account-col-saldo { min-width: 150px; }
     .page-lancamentos .resource-lancamentos .launch-actions { position: sticky; right: 0; z-index: 2; box-shadow: -5px 0 8px #103e4714; }
     .page-lancamentos .resource-lancamentos .action-head { position: sticky; right: 0; z-index: 3; }
 }
 @media (max-width: 760px) {
+    .page-lancamentos .resource-lancamentos tbody .launch-actions > button:not(.mobile-action-toggle) { display: none !important; }
+    .data-table .launch-actions > .mobile-action-toggle { display: inline-flex !important; width: 36px; height: 36px; background: #ffffffcf; color: #173c30; border: 1px solid #90b3a3; }
+    .resource-lancamentos .launch-actions .quick-settlement { position: fixed; z-index: 1001; top: var(--quick-top); left: var(--quick-left); width: 220px; max-width: calc(100vw / var(--app-zoom, 1) - 16px); margin: 0; padding: 10px; border: 1px solid #97b6ac; border-radius: 9px; background: #fff; box-shadow: 0 6px 24px #103e4738; }
     .resource-lancamentos { min-width: 0 !important; width: 100%; }
     .resource-lancamentos thead { display: none; }
     .resource-lancamentos tbody { display: block; }
@@ -26,6 +40,6 @@
     .resource-lancamentos .account-col-valor::before { content: 'Valor líquido'; }
     .resource-lancamentos .account-col-saldo::before { content: 'Saldo'; }
     .resource-lancamentos :is(.account-col-data_vencimento, .account-col-valor, .account-col-saldo)::before { display: block; color: var(--muted); font-size: 10px; margin-bottom: 4px; }
-    .resource-lancamentos tbody tr > .launch-actions { grid-column: 4; grid-row: 1 / 4; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: 6px; }
+    .resource-lancamentos tbody tr > .launch-actions { grid-column: 4; grid-row: 1 / 4; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: flex-start; gap: 6px; }
     .resource-lancamentos .quick-settlement { max-width: 100%; flex-wrap: wrap; }
 }

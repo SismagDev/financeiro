@@ -721,8 +721,9 @@
     --page-title-gap: 4px;
 }
 .page-content {
-    max-width: 1390px;
-    padding: var(--page-top-padding) 38px 50px;
+    width: 100%;
+    min-width: 0;
+    padding: var(--page-top-padding) 24px 50px;
     margin: 0 auto;
 }
 .page-heading {
@@ -2479,7 +2480,7 @@ tbody td:first-child b {
 
 .admin-page {
     min-height: 100vh;
-    padding: var(--page-top-padding) clamp(18px, 5vw, 72px);
+    padding: var(--page-top-padding) clamp(15px, 2vw, 24px);
     background: #f6f8f6;
     color: #26362e;
 }

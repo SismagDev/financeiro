@@ -1,4 +1,5 @@
 import "./ResourcePage.css";
+import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pagination } from "./Pagination";
 import { SearchInput } from "./SearchInput";
@@ -105,6 +106,40 @@ export function ResourcePage({
     const tableWrap = useRef<HTMLDivElement>(null);
     const submitting = useRef(false);
     const quickAccount = quickSettlement?.row;
+    const [actionMenu, setActionMenu] = useState<{ row: Row; top: number; left: number } | null>(null);
+    const actionPopup = useRef<HTMLDivElement>(null);
+    const actionTrigger = useRef<HTMLButtonElement | null>(null);
+    const [mobileActionPosition, setMobileActionPosition] = useState({ top: 8, left: 8 });
+    useEffect(() => {
+        if (!actionMenu) return;
+        actionPopup.current?.querySelector<HTMLButtonElement>("button")?.focus();
+        const close = (event: Event) => {
+            if (event.target instanceof Node && (actionPopup.current?.contains(event.target) || actionTrigger.current?.contains(event.target))) return;
+            setActionMenu(null);
+        };
+        const dismiss = () => setActionMenu(null);
+        document.addEventListener("pointerdown", close, true);
+        document.addEventListener("focusin", close);
+        window.addEventListener("resize", dismiss);
+        window.addEventListener("scroll", close, true);
+        return () => {
+            document.removeEventListener("pointerdown", close, true);
+            document.removeEventListener("focusin", close);
+            window.removeEventListener("resize", dismiss);
+            window.removeEventListener("scroll", close, true);
+        };
+    }, [actionMenu]);
+    function openActionMenu(row: Row, button: HTMLButtonElement) {
+        if (actionMenu?.row.id === row.id && actionMenu?.row.empresa_id === row.empresa_id) { setActionMenu(null); return; }
+        const rect = button.getBoundingClientRect();
+        const zoom = Number(getComputedStyle(document.documentElement).getPropertyValue("--app-zoom")) || 1;
+        const position = { left: Math.max(8, Math.min(rect.right - 220, window.innerWidth - 228)) / zoom,
+            top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 260)) / zoom };
+        actionTrigger.current = button;
+        setQuickSettlement(null);
+        setMobileActionPosition(position);
+        setActionMenu({ row, ...position });
+    }
     const quickOptions = useMemo(() => quickAccount ? loadQuickSettlementOptions(quickAccount) : undefined,
         [quickAccount, loadQuickSettlementOptions]);
     useLayoutEffect(() => {
@@ -368,6 +403,9 @@ export function ResourcePage({
                                         </td>
                                     ))}
                                     <td className={`row-actions delete-actions ${showSettlement ? "launch-actions" : ""}`} onClick={event => event.stopPropagation()}>
+                                        {showSettlement && <button type="button" className="mobile-action-toggle" aria-label={`Ações da conta: ${row.descricao}`} aria-haspopup="menu"
+                                            aria-expanded={actionMenu?.row.id === row.id && actionMenu?.row.empresa_id === row.empresa_id}
+                                            onClick={event => openActionMenu(row, event.currentTarget)}><Icon name="menu" size={20} /></button>}
                                         {showSettlement && !hasSettlements(row) && Number(row.saldo) > 0 &&
                                             row.status !== "pago" &&
                                             row.status !== "cancelado" && (
@@ -391,7 +429,7 @@ export function ResourcePage({
                                         )}
                                         {showSettlement && Number(row.saldo) > 0 && row.status !== "pago" && row.status !== "cancelado" && (
                                             quickSettlement && quickSettlement.row.id === row.id && quickSettlement.row.empresa_id === row.empresa_id ?
-                                                <div className="quick-settlement" ref={quickRoot} key={String(row.id)}>
+                                                <div className="quick-settlement" ref={quickRoot} key={String(row.id)} style={{ "--quick-top": `${mobileActionPosition.top}px`, "--quick-left": `${mobileActionPosition.left}px` } as import("react").CSSProperties}>
                                                     <Combobox label="Forma de pagamento da baixa rápida" required disabled={busy}
                                                         twoColumns optionDetails={Object.fromEntries(paymentForms.map(item => [String(item.id), String(item.banco_descricao || "Sem banco")]))}
                                                         value={quickSettlement.paymentForm} source="formasAtivas"
@@ -444,6 +482,26 @@ export function ResourcePage({
                     <Pagination total={meta.total} page={page} pageCount={pageCount} onPageChange={onPageChange} />
                 )}
             </section>
+            {actionMenu && createPortal(<div ref={actionPopup} className="mobile-account-menu" role="menu" aria-label="Ações da conta"
+                style={{ top: actionMenu.top, left: actionMenu.left }} onKeyDown={event => {
+                    if (event.key === "Escape") { event.preventDefault(); setActionMenu(null); actionTrigger.current?.focus(); }
+                    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                        event.preventDefault();
+                        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+                        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                        buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+                    }
+                }}>
+                {[
+                    ...(hasSettlements(actionMenu.row) ? [{ icon: "card", label: "Detalhes das baixas", run: () => onShowSettlements(actionMenu.row) }] :
+                        Number(actionMenu.row.saldo) > 0 && !["pago", "cancelado"].includes(String(actionMenu.row.status)) ? [{ icon: "check", label: actionMenu.row.tipo === "receber" ? "Registrar recebimento" : "Registrar pagamento", run: () => onSettle(actionMenu.row) }] : []),
+                    ...(Number(actionMenu.row.saldo) > 0 && !["pago", "cancelado"].includes(String(actionMenu.row.status)) ? [{ icon: "bolt", label: "Baixa rápida", run: () => setQuickSettlement({ row: actionMenu.row, paymentForm: "" }) }] : []),
+                    { icon: "copy", label: "Clonar conta", run: () => onClone(actionMenu.row) },
+                    { icon: "trash", label: "Excluir conta", run: () => onDelete(actionMenu.row) },
+                ].map(action => <button key={action.label} type="button" role="menuitem" disabled={busy} onClick={() => {
+                    setActionMenu(null); actionTrigger.current?.focus(); action.run();
+                }}><Icon name={action.icon} size={18} />{action.label}</button>)}
+            </div>, document.body)}
             {showSettlement && (
                 <section className="launch-summary">
                     <span>Resumo das contas filtradas</span>

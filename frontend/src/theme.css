@@ -181,6 +181,16 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .page-lancamentos .resource-lancamentos .due-urgent:is(:hover, :focus-within) td { background: #eda99e !important; }
 .account-due-date { display: flex; flex-direction: column; gap: 3px; }
 .due-label { font-size: 10px; font-weight: 650; white-space: normal; color: #79271c; }
+.page-lancamentos .resource-lancamentos .income-row.due-attention td { background: #c6e6d1; }
+.page-lancamentos .resource-lancamentos .income-row.due-urgent td { background: #97cdaa; }
+.page-lancamentos .resource-lancamentos .income-row.due-attention:is(:hover, :focus-within) td { background: #b7dcc5 !important; }
+.page-lancamentos .resource-lancamentos .income-row.due-urgent:is(:hover, :focus-within) td { background: #86bf9a !important; }
+.resource-lancamentos .income-row .due-label { color: #164c2c; }
+.page-lancamentos .resource-lancamentos tbody td { color: #17221e; }
+.page-lancamentos .resource-lancamentos :is(.amount-cell, .balance-cell b) { color: #17221e !important; }
+.page-lancamentos .resource-lancamentos .balance-cell small { color: #34463c; }
+.page-lancamentos .resource-lancamentos .account-description { padding-right: 16px; }
+.page-lancamentos .resource-lancamentos td.account-description-cell { padding-right: 20px; }
 .company-due-settings { margin: 6px 0 18px; min-width: 0; padding: 14px; border: 1px solid var(--panel-border); border-radius: 9px; }
 .company-due-settings legend { color: var(--ink); font-size: 13px; font-weight: 650; padding: 0 5px; }
 .company-due-settings p, .company-due-settings > small { color: var(--muted); font-size: 12px; line-height: 1.5; }
@@ -513,7 +523,7 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
     .account-edit-modal .account-edit-layout > .account-settlements { flex: none; height: auto; margin-top: 12px; }
     .account-edit-modal .settlement-list { flex: none; max-height: none; overscroll-behavior: auto; }
 }
-.keep-account-data { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.keep-account-data { margin-top: 10px; padding-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .client-create-modal { width: min(620px, calc(100vw / var(--app-zoom, 1) - 24px)); max-height: calc(90dvh / var(--app-zoom, 1)); }
 .client-create-modal::backdrop { background: #12271f61; }
 .client-create-modal .inline-client { margin: 0; }

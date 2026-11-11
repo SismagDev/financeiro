@@ -68,7 +68,7 @@ async function run() {
         await modal.getByRole("option", { name: "Empresa segunda", exact: true }).click();
         await modal.getByRole("combobox", { name: "Dinheiro da filial 1", exact: true }).click();
         assert.equal(await modal.getByRole("option").filter({ hasText: "Banco teste" }).count(), 0);
-        await modal.getByRole("option", { name: "Banco segundo — Forma segunda", exact: true }).click();
+        await modal.getByRole("option", { name: /Forma segunda.*Banco segundo/ }).click();
         await modal.getByRole("combobox", { name: "Empresa da filial 1", exact: true }).click();
         await modal.getByRole("option", { name: "Empresa teste", exact: true }).click();
         assert.equal(await modal.getByRole("combobox", { name: "Dinheiro da filial 1", exact: true }).inputValue(), "");
@@ -150,6 +150,23 @@ async function run() {
         assert.equal(await modal.locator('.daily-cash-entries li').count(), 0);
         await modal.getByRole('button', { name: 'Cancelar', exact: true }).click();
         await modal.getByRole('heading', { name: 'Pendências (1)', exact: true }).waitFor();
+        await modal.getByRole('button', { name: 'Fechar cadastro', exact: true }).click();
+        await page.getByRole('button', { name: 'Importar caixa diário', exact: true }).click();
+        const systemsFile = [cashHeader, '1;1/1/2025;Comerce;R$ 10,00;;;;;', '1;1/1/2025;Service/Zaal;R$ 20,00;;;;;'].join('\r\n');
+        await modal.locator('input[type="file"]').setInputFiles({ name: 'sistemas.txt', mimeType: 'text/plain', buffer: Buffer.from(systemsFile) });
+        await modal.getByLabel('Data inicial', { exact: true }).fill('2025-01-01');
+        await modal.getByRole('button', { name: 'Analisar arquivo', exact: true }).click();
+        await modal.getByRole('heading', { name: 'Importação de Comerce', exact: true }).waitFor();
+        await modal.getByRole('combobox', { name: 'Empresa da filial 1', exact: true }).click();
+        await modal.getByRole('option', { name: 'Empresa teste', exact: true }).click();
+        await modal.getByRole('combobox', { name: 'Dinheiro da filial 1', exact: true }).click();
+        await modal.getByRole('option').filter({ hasText: /Banco teste/ }).first().click();
+        const savedChoice = await modal.getByRole('combobox', { name: 'Dinheiro da filial 1', exact: true }).inputValue();
+        await modal.getByRole('button', { name: 'Próxima etapa', exact: true }).click();
+        await modal.getByRole('heading', { name: 'Importação de Service/Zaal', exact: true }).waitFor();
+        assert.equal(await modal.getByRole('combobox', { name: 'Empresa da filial 1', exact: true }).inputValue(), '');
+        await modal.getByRole('button', { name: 'Etapa anterior', exact: true }).click();
+        assert.equal(await modal.getByRole('combobox', { name: 'Dinheiro da filial 1', exact: true }).inputValue(), savedChoice);
         assert.deepEqual(errors, []);
         console.log("PASS UI: upload, data, filial, exclusividade das formas, prévia, cancelamento, falha e sucesso manual, pendência ignorada, confirmação e largura móvel.");
     } catch (error) { console.error("Erros do navegador:", errors); console.error((await page.locator("body").innerText()).slice(0, 2500)); throw error; }

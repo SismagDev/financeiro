@@ -1,3 +1,4 @@
+import "./ResourcePage.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pagination } from "./Pagination";
 import { SearchInput } from "./SearchInput";
@@ -128,7 +129,7 @@ export function ResourcePage({
         } finally { submitting.current = false; }
     }
     const columns: [string, string][] = ["lancamentos", "baixas", "pessoas", "formas", "bancos"].includes(resource.key)
-        ? [["empresa_identificador", "Empresa"], ...resource.columns] : resource.columns;
+        ? [["empresa_identificador", "Empresa"], ...resource.columns.filter(([key]) => resource.key !== "lancamentos" || key !== "tipo")] : resource.columns;
     const showSettlement = resource.key === "lancamentos";
     const hasFilters = Boolean((personFilters && (!personFilters.mostrarClientes || !personFilters.mostrarFornecedores)) || search || dateFilters?.dataInicial || dateFilters?.dataFinal || dateFilters?.formaPagamento ||
         (dateFilters && (!dateFilters.mostrarRecebimentos || !dateFilters.mostrarPagamentos)) ||
@@ -311,7 +312,7 @@ export function ResourcePage({
                                     }}
                                 >
                                     {columns.map(([key]) => (
-                                        <td key={key} className={columnClass(key)}>
+                                        <td key={key} className={`${columnClass(key)} ${showSettlement ? "account-col-" + key : ""}`}>
                                             {key === "descricao" && showSettlement ? (
                                                 <div className="account-description">
                                                     <span className="account-description-text" title={formatValue(key, row[key])}>{formatValue(key, row[key])}</span>

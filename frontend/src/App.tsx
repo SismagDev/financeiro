@@ -264,6 +264,7 @@ function App() {
         initialAccountForm.current = null; accountForm.current = null;
         setPendingSettlements([]); setEditedAmounts(null);
         if (next === "create" || next === "daily-cash") { setFormCompany(companyFilter || selectedCompanies[0]?.id || ""); setSelectedRow(null); setCreateAccountType(tipo); }
+        setCreatedSettlementAccount(null);
         setModalState(next);
     }
     const formCompanyId = modal !== "create" && selectedRow ? String(selectedRow.empresa_id || "") : formCompany || selectedCompanies[0]?.id || "";
@@ -285,9 +286,11 @@ function App() {
     });
     const [personFilters, setPersonFilters] = useState({ mostrarClientes: true, mostrarFornecedores: true });
     const [settlementOverlay, setSettlementOverlay] = useState(false);
-    const [zoom, setZoom] = useState(100);
+    const [createdSettlementAccount, setCreatedSettlementAccount] = useState<Row | null>(null);
+    const [zoom, setZoom] = useState(() => { try { const value = Number(localStorage.getItem("fluxo-zoom")); return [80,90,100,110,120].includes(value) ? value : 100; } catch { return 100; } });
     useEffect(() => {
         document.documentElement.style.setProperty("--app-zoom", String(zoom / 100));
+        try { localStorage.setItem("fluxo-zoom", String(zoom)); } catch { /* Mantém o zoom da sessão sem armazenamento. */ }
         return () => { document.documentElement.style.removeProperty("--app-zoom"); };
     }, [zoom]);
     const currentMonth = new Date();
@@ -616,11 +619,14 @@ function App() {
         return { acrescimo_confirmado: extraCents / 100, saldo_confirmado: balanceCents / 100 };
     }
 
+    const savingRecord = useRef(false);
     async function saveRecord(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!company || !resource || busy) return;
+        if (!company || !resource || busy || savingRecord.current) return;
+        savingRecord.current = true;
         setBusy(true);
         const form = new FormData(event.currentTarget);
+        const keepAccount = modal === "create" && resource.key === "lancamentos" && form.get("manter_dados_conta") === "on";
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
         const openSettlement = modal === "create" && resource.key === "lancamentos" && submitter instanceof HTMLButtonElement && submitter.value === "gravar-baixa";
         const version = formVersion.current;
@@ -699,16 +705,16 @@ function App() {
                       ? `${parcelas} parcelas criadas.`
                       : `${resource.singular[0].toUpperCase()}${resource.singular.slice(1)} cadastrado${resource.key === "pessoas" ? "a" : ""}.`,
             );
-            setModal(null);
-            setSelectedRow(null);
+            if (!keepAccount) { setModal(null); setSelectedRow(null); }
+            else if (accountForm.current) initialAccountForm.current = accountFormSnapshot(accountForm.current, formCompanyId);
             if (openSettlement) {
                 const settlementVersion = formVersion.current;
                 try {
                     const createdId = parcelas > 1 ? result.ids[0] : result.id;
                     const saved = await api(`/lancamentos/${createdId}`, {}, formCompanyId);
                     if (settlementVersion !== formVersion.current) return;
-                    setSelectedRow(saved.data);
-                    setModal("settle");
+                    if (keepAccount) { setCreatedSettlementAccount(saved.data); setSettlementOverlay(true); }
+                    else { setSelectedRow(saved.data); setModal("settle"); }
                 } catch (error) {
                     notify(`Conta gravada, mas não foi possível abrir a baixa. ${error instanceof Error ? error.message : "Tente pela listagem de Contas."}`, "error");
                 }
@@ -717,6 +723,7 @@ function App() {
         } catch (e) {
             notify(e instanceof Error ? e.message : "Não foi possível salvar.", "error");
         } finally {
+            savingRecord.current = false;
             setBusy(false);
         }
     }
@@ -757,7 +764,8 @@ function App() {
 
     async function settleLaunch(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!company || !selectedRow) return;
+        const settlementAccount = createdSettlementAccount || selectedRow;
+        if (!company || !settlementAccount || busy) return;
         const values = Object.fromEntries(new FormData(event.currentTarget));
         if (modal === "edit" && resource?.key === "lancamentos") {
             const amount = Number(values.valor), discount = Number(values.desconto || 0), surcharge = Number(values.acrescimo || 0);
@@ -773,12 +781,12 @@ function App() {
         }
         setBusy(true);
         try {
-            await registerLaunchSettlement(selectedRow, {
+            await registerLaunchSettlement(settlementAccount, {
                 banco_id: String(values.banco_id), forma_pagamento_id: String(values.forma_pagamento_id), valor: Number(values.valor), data: String(values.data),
                 desconto: Number(values.desconto || 0), acrescimo: Number(values.acrescimo || 0),
             });
             if (activeCompanyId.current !== company.id) return;
-            if (settlementOverlay) setSettlementOverlay(false);
+            if (settlementOverlay) { setSettlementOverlay(false); setCreatedSettlementAccount(null); }
             else { setModal(null); setSelectedRow(null); }
             notify("Baixa registrada e status atualizado.");
         } catch (e) {
@@ -881,7 +889,7 @@ function App() {
             </main>
         );
     const companyFilterControl = <CompanySelect companies={selectedCompanies} visible={companies.length > 0} value={companyFilter} onChange={changeCompanyFilter} />;
-    const currentAccount = selectedRow && currentRows.find(row => row.id === selectedRow.id && row.empresa_id === selectedRow.empresa_id) || selectedRow;
+    const currentAccount = createdSettlementAccount || selectedRow && currentRows.find(row => row.id === selectedRow.id && row.empresa_id === selectedRow.empresa_id) || selectedRow;
     const editBalance = currentAccount ? Math.max(0, Math.round(((editedAmounts ? netAmount(editedAmounts) : netAmount(currentAccount)) -
         (netAmount(currentAccount) - remainingAmount(currentAccount, dashboardData)) - pendingSettlements.reduce((sum, row) => sum + settlementPrincipal(row), 0)) * 100) / 100) : 0;
     const editAccount = currentAccount ? { ...currentAccount, saldo: editBalance,

@@ -4,6 +4,18 @@ import { readFile } from "node:fs/promises";
 import { analyzeCash, cashImportSchema, cashMoney, prepareCash } from "../src/importacao/caixa-diario.plan";
 import { cashFixture, cashText, cashHeader } from "./fixtures/daily-cash";
 
+test("sistemas distintos na mesma filial/data são etapas separadas e rejeitam duplicação só dentro do sistema", () => {
+    const fixture = cashFixture();
+    fixture.arquivo = cashText('1;2/1/2025;Comerce;R$ 10,00;;;;;', '1;2/1/2025;Service/Zaal;R$ 20,00;;;;;');
+    assert.deepEqual(analyzeCash(fixture).sistemas, ['Comerce', 'Service/Zaal']);
+    assert.equal(analyzeCash(fixture).dias.length, 2);
+    assert.throws(() => prepareCash(fixture), /Sistema da etapa/);
+    const commerce = prepareCash({ ...fixture, sistema: 'Comerce' });
+    assert.equal(commerce.dias.length, 1); assert.equal(commerce.dias[0].total, 10);
+    assert.equal(prepareCash({ ...fixture, sistema: 'Service/Zaal' }).dias[0].total, 20);
+    assert.throws(() => analyzeCash({ ...fixture, sistema: 'Comerce', arquivo: fixture.arquivo + '\r\n1;2/1/2025;Comerce;R$ 1,00;;;;;' }), /repetido/);
+});
+
 test("histórico: vazios/zeros mistos usam apenas Service + Zaal − Despesas em centavos", () => {
     const arquivo = [cashHeader + ';Receita_Service;Receita_Zaal;Despesas;Venda_Equipamentos;Compra_Equipamentos',
         ['1','1/1/2025','Service/Zaal','','R$ 0,00','','R$ 0,00','R$ 900,00','R$ 700,00','R$ 100,10','R$ 20,20','R$ 10,05','R$ 999,00','R$ 500,00'].join(';'),

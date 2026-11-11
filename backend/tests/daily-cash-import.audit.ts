@@ -1,7 +1,6 @@
 // SQL e HTTP reais apenas com fixtures sintéticas, revertidas por transação externa.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import express from "express";
 import type { Server } from "node:http";
 import { pool } from "../src/db";
@@ -18,8 +17,6 @@ async function run() {
     let server: Server | undefined, sequence = 0;
     try {
         await client.query("BEGIN");
-        const migration = (await readFile("migrations/015_caixa_diario.sql", "utf8")).replace(/^BEGIN;\s*/, "").replace(/COMMIT;\s*$/, "");
-        await client.query(migration);
         await client.query("INSERT INTO users (id,nome,email,password_hash,role,ativo) VALUES ($1,'Teste Importação Caixa',$2,'sem-login','comum',TRUE)", [user, `${user}@audit.invalid`]);
         for (const id of [company, foreign]) await client.query("INSERT INTO empresas (id,nome,ativo,licenca_expira_em) VALUES ($1,'Teste Importação Caixa',TRUE,CURRENT_TIMESTAMP + INTERVAL '1 year')", [id]);
         await client.query("INSERT INTO users_empresas (user_id,empresa_id,perfil) VALUES ($1,$2,'comum')", [user, company]);
@@ -71,7 +68,9 @@ async function run() {
         assert.deepEqual(conflicts.body.conflitos, [{ filial: "1", data: "2025-01-02" }]);
         const saved = await client.query("SELECT id, valor, status, to_char(competencia AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS competencia FROM lancamentos WHERE empresa_id = $1 ORDER BY data_vencimento", [company]);
         assert.equal(saved.rows.length, 2); assert.equal(Number(saved.rows[0].valor), 63.3);
-        assert.equal(saved.rows[0].id, dailyCashImportId(company, "2025-01-02"));
+        assert.equal(saved.rows[0].id, dailyCashImportId(company, "2025-01-02", preview.body.planos[company]));
+        const linkedPlan = await client.query("SELECT p.id,p.descricao,p.tipo FROM lancamentos l JOIN planos_contas p ON p.empresa_id=l.empresa_id AND p.id=l.plano_conta_id WHERE l.empresa_id=$1 AND l.id=$2", [company, saved.rows[0].id]);
+        assert.equal(linkedPlan.rows[0].id, preview.body.planos[company]); assert.equal(linkedPlan.rows[0].descricao, "Service/Zaal"); assert.ok(["receber","ambos"].includes(linkedPlan.rows[0].tipo));
         assert.equal(saved.rows[0].status, "pago"); assert.ok(saved.rows[0].competencia.startsWith("2025-01-01"));
         const receiptTotal = await client.query("SELECT sum(valor)::text AS total, count(*)::int AS n FROM recebimentos WHERE empresa_id=$1", [company]);
         assert.equal(receiptTotal.rows[0].n, 6); assert.equal(Number(receiptTotal.rows[0].total), 123.3);
@@ -83,7 +82,7 @@ async function run() {
             const transaction = await wrappedConnect.call(pool);
             const query = transaction.query.bind(transaction);
             transaction.query = (async (sql: string, values?: unknown[]) => {
-                if (sql.includes("INSERT INTO lancamentos") && values?.includes(dailyCashImportId(company, "2025-02-02"))) throw new Error("Falha controlada no segundo dia");
+                if (sql.includes("INSERT INTO lancamentos") && values?.includes(dailyCashImportId(company, "2025-02-02", preview.body.planos[company]))) throw new Error("Falha controlada no segundo dia");
                 return query(sql, values);
             }) as typeof transaction.query;
             return transaction;
@@ -129,6 +128,20 @@ async function run() {
         for (const row of historicalRows.rows) { assert.equal(row.forma, historicalRecordId(row.empresa_id, 'formas_pagamento')); assert.equal(row.ativo, false); assert.equal(row.status, 'pago'); assert.equal(row.data, '2025-01-08'); }
         assert.equal(Number(historicalRows.rows[0].valor), 25); assert.equal(Number(historicalRows.rows[1].valor), 110.25);
         assert.equal((await request({ ...historical, acao: 'importar' })).body.importados, 0);
+        const samePlan = { ...fixture, sistema: "service/zaal", arquivo: fixture.arquivo.replaceAll("Service/Zaal", "service/zaal") };
+        assert.equal((await request({ ...samePlan, acao: "importar" })).body.importados, 0);
+        const commerce = { ...fixture, sistema: 'Comerce', arquivo: fixture.arquivo.replaceAll('Service/Zaal', 'Comerce') };
+        assert.equal((await request({ ...commerce, acao: 'importar' })).body.importados, 1);
+        assert.equal((await request({ ...commerce, acao: 'importar' })).body.importados, 0);
+        const manualCommerce = { ...commerce, acao: 'manual', chave: '1:2025-01-03', valores: manual.valores };
+        assert.equal((await request(manualCommerce)).status, 201);
+        assert.equal((await request(manualCommerce)).status, 409);
+        const systemsAtDate = await client.query("SELECT p.descricao FROM lancamentos l JOIN planos_contas p ON p.empresa_id=l.empresa_id AND p.id=l.plano_conta_id WHERE l.empresa_id=$1 AND l.data_vencimento='2025-01-03' ORDER BY p.descricao", [company]);
+        assert.deepEqual(systemsAtDate.rows.map(row => row.descricao), ['Comerce', 'Service/Zaal']);
+        await client.query("INSERT INTO lancamentos (id,empresa_id,descricao,valor,tipo,data_vencimento,tipo_caixa_diario_id,observacoes) VALUES ($1,$2,'Legado',10,'receber','2025-03-01',$3,'Importação Caixa Diário • Filial 1 • Service/Zaal')", [dailyCashImportId(company,'2025-03-01'), company, mapping.tipo_caixa_diario_id]);
+        const legacy = { ...fixture, arquivo: cashText('1;1/3/2025;Service/Zaal;R$ 10,00;;;;;'), acao: 'importar' };
+        assert.equal((await request(legacy)).body.importados, 0);
+        assert.equal((await request({ ...legacy, sistema: 'Comerce', arquivo: legacy.arquivo.replaceAll('Service/Zaal','Comerce') })).body.importados, 1);
         console.log("PASS importação SQL/HTTP: prévia sem escrita, mapeamentos, pendência integral, resolução manual, conflitos, reenvio, datas, baixas e rollback da carga inteira.");
     } finally {
         if (server) await new Promise<void>(resolve => server!.close(() => resolve()));

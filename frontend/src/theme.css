@@ -496,3 +496,7 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
     .account-edit-modal .account-edit-layout > .account-settlements { flex: none; height: auto; margin-top: 12px; }
     .account-edit-modal .settlement-list { flex: none; max-height: none; overscroll-behavior: auto; }
 }
+.keep-account-data { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.client-create-modal { width: min(620px, calc(100vw / var(--app-zoom, 1) - 24px)); max-height: calc(90dvh / var(--app-zoom, 1)); }
+.client-create-modal::backdrop { background: #12271f61; }
+.client-create-modal .inline-client { margin: 0; }

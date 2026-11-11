@@ -17,7 +17,7 @@ O endpoint `POST /importacao/caixa-diario` oferece `analisar`, `prever`, `import
 Todas as empresas de destino precisam pertencer ao usuário e estar disponíveis segundo as regras de licença existentes.
 Prévia e confirmação verificam conflitos por empresa/data; dias existentes são listados e ignorados, inclusive quando surgem entre a prévia e a confirmação. Os demais dias elegíveis são importados normalmente.
 Dias resolvidos nesta sessão são verificados pelo UUID determinístico e não entram na carga automática.
-Há bloqueio por empresa, revalidação antes da escrita e uma transação para toda a carga automática. Não há nova migration.
+Há bloqueio por empresa, revalidação antes da escrita e uma transação para toda a carga automática. Esta correção não exige alteração de schema.
 
 ## Verificação
 
@@ -30,3 +30,11 @@ Em `backend`:
 - Com frontend local, `npx tsx tests/daily-cash-import-ui.audit.ts`: fluxo de interface com API simulada; `AUDIT_FRONTEND_URL` permite alterar a URL padrão `http://127.0.0.1:5189`.
 
 As auditorias não executam a carga real do TXT.
+
+## Sistemas
+
+O TXT é analisado por Sistema, em etapas com mapeamentos e pendências independentes. A descrição da forma e o banco são mostrados em duas colunas, ordenados nessa ordem.
+
+O plano de contas recebe o nome do Sistema e é criado por empresa se não existir. A identificação e os UUIDs usam empresa, data e UUID do plano. A prévia reverte também a criação do plano; a confirmação grava tudo na mesma transação.
+
+O fluxo não lê nem grava sistema_importacao_caixa. O arquivo da migration 016 foi removido; a estrutura já aplicada no banco permanece intacta. Cargas antigas são reconhecidas pelos UUIDs anteriores e observações/tipo disponíveis; o plano antigo não é reclassificado e a prévia avisa quando ele foi preservado. Se a origem legada foi alterada e não puder ser reconhecida, confira os registros antes de reimportar.

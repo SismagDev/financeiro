@@ -1,7 +1,7 @@
 import { historicalRecordId } from "../utils/access-import";
 import type { PoolClient } from "pg";
 import { pool } from "../db";
-import { createDailyCash, dailyCashImportId, dailyCashSchema } from "../caixa/caixa-diario.service";
+import { createDailyCash, dailyCashImportId, dailyCashSchema, resolveDailyCashPlan, legacyDailyCashImportId } from "../caixa/caixa-diario.service";
 import { SettlementError } from "../lancamentos/settlement.service";
 import { analyzeCash, cashColumns, prepareCash, type CashDay, type CashImportInput, type MappedCashInput } from "./caixa-diario.plan";
 
@@ -34,27 +34,31 @@ async function validateMappings(client: PoolClient, userId: string, input: Mappe
 export async function importDailyCash(userId: string, input: CashImportInput) {
     if (input.acao === "analisar") return analyzeCash(input);
     const plan = prepareCash(input);
+    const system = input.sistema || plan.sistemas[0]!;
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
         const banks = await validateMappings(client, userId, input, new Set(plan.dias.filter(day => !day.historico).map(day => day.filial)));
+        const plans = new Map<string, string>();
+        for (const company of [...new Set(Object.values(input.filiais).map(mapping => mapping.empresa_id))].sort()) plans.set(company, (await resolveDailyCashPlan(client, company, system)).id);
         const conflitos: { filial: string; data: string }[] = [];
         const resolved = new Set(input.resolvidos);
         const checkedDays = plan.dias.filter(day => input.acao !== "manual" || day.chave === input.chave);
-        const existingDays = new Map<string, { id: string; data: string }[]>();
+        const existingDays = new Map<string, { id: string; data: string; plano_conta_id?: string; observacoes?: string; tipo_descricao?: string }[]>();
         for (const company of new Set(checkedDays.map(day => input.filiais[day.filial]!.empresa_id))) {
             const dates = checkedDays.filter(day => input.filiais[day.filial]!.empresa_id === company).map(day => day.data);
-            const existing = await client.query<{ id: string; data: string }>(`SELECT id, to_char(data_vencimento, 'YYYY-MM-DD') AS data
-                FROM lancamentos WHERE empresa_id = $1 AND (id = ANY($3::uuid[]) OR
-                (tipo_caixa_diario_id IS NOT NULL AND data_vencimento = ANY($2::date[])))`,
-                [company, dates, dates.map(date => dailyCashImportId(company, date))]);
+            const existing = await client.query<{ id: string; data: string; plano_conta_id?: string; observacoes?: string; tipo_descricao?: string }>(`SELECT l.id, to_char(l.data_vencimento, 'YYYY-MM-DD') AS data, l.plano_conta_id, l.observacoes, t.descricao AS tipo_descricao
+                FROM lancamentos l LEFT JOIN tipos_caixa_diario t ON t.empresa_id=l.empresa_id AND t.id=l.tipo_caixa_diario_id WHERE l.empresa_id=$1 AND (l.id=ANY($3::uuid[]) OR l.data_vencimento=ANY($2::date[]))`,
+                [company, dates, dates.flatMap(date => [dailyCashImportId(company, date, plans.get(company)), legacyDailyCashImportId(company, date), legacyDailyCashImportId(company, date, system)])]);
             existingDays.set(company, existing.rows);
         }
         for (const day of checkedDays) {
             const company = input.filiais[day.filial]!.empresa_id;
-            const existing = existingDays.get(company)!.filter(row => row.data === day.data || row.id === dailyCashImportId(company, day.data));
+            const expectedId = dailyCashImportId(company, day.data, plans.get(company));
+            const legacyId = legacyDailyCashImportId(company, day.data, system);
+            const existing = existingDays.get(company)!.filter(row => row.id === expectedId || row.id === legacyId || (row.data === day.data && (row.plano_conta_id === plans.get(company) || (row.observacoes?.startsWith("Importação Caixa Diário • Filial ") && row.observacoes.split(" • ")[2] === system) || (row.id === legacyDailyCashImportId(company, day.data) && row.tipo_descricao === system))));
             if (resolved.has(day.chave)) {
-                if (existing.length !== 1 || existing[0]!.id !== dailyCashImportId(company, day.data)) throw new SettlementError(`Resolução manual não encontrada ou conflitante: ${day.data}`);
+                if (existing.length !== 1 || ![expectedId, legacyId, legacyDailyCashImportId(company, day.data)].includes(existing[0]!.id)) throw new SettlementError(`Resolução manual não encontrada ou conflitante: ${day.data}`);
             } else if (existing.length) conflitos.push({ filial: day.filial, data: day.data });
         }
         if (input.acao === "manual" && conflitos.length) throw new SettlementError(`Caixas já existentes: ${conflitos.map(item => `filial ${item.filial}: ${item.data}`).join("; ")}`, 409);
@@ -73,7 +77,7 @@ export async function importDailyCash(userId: string, input: CashImportInput) {
             const mapping = input.filiais[day.filial]!;
             if (input.valores.data !== day.data || input.valores.tipo_caixa_diario_id !== mapping.tipo_caixa_diario_id)
                 throw new SettlementError("A data e o tipo devem corresponder ao dia pendente");
-            const result = await createDailyCash(mapping.empresa_id, input.valores, client, true);
+            const result = await createDailyCash(mapping.empresa_id, input.valores, client, true, false, plans.get(mapping.empresa_id));
             await client.query("COMMIT");
             return { id: result.id, chave: day.chave };
         }
@@ -93,11 +97,13 @@ export async function importDailyCash(userId: string, input: CashImportInput) {
                     await client.query("INSERT INTO formas_pagamento (id, empresa_id, descricao, tipo, banco_id, ativo) VALUES ($1,$2,'Baixa histórica','outro',$3,FALSE) ON CONFLICT DO NOTHING", [forma, company, banco]);
                     values.baixas = [{ banco_id: banco, forma_pagamento_id: forma, valor: day.total }];
                 }
-                await createDailyCash(company, values, client, true, Boolean(day.historico));
+                await createDailyCash(company, values, client, true, Boolean(day.historico), plans.get(company));
             }
             await client.query("COMMIT");
         } else await client.query("ROLLBACK");
         return { ...plan, dias,
+            planos: Object.fromEntries(plans),
+            avisos: ignored.filter(day => existingDays.get(input.filiais[day.filial]!.empresa_id)?.some(row => row.data === day.data && row.plano_conta_id !== plans.get(input.filiais[day.filial]!.empresa_id))).map(day => `Filial ${day.filial}, ${day.data}: carga anterior reconhecida; plano original preservado`),
             conflitos, ignorados: ignored.length, total_ignorado: ignored.reduce((sum, day) => sum + Math.round(day.total * 100), 0) / 100,
             dias_importados: input.acao === "importar" ? ready.map(day => ({ filial: day.filial, data: day.data })) : [],
             importados: input.acao === "importar" ? ready.length : 0,

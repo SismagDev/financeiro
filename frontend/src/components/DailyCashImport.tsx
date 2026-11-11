@@ -8,12 +8,12 @@ const columns = [["Rec_Dinheiro", "Dinheiro"], ["Rec_Cartão", "Cartão"], ["Rec
 type Column = typeof columns[number][0];
 type Mapping = { empresa_id: string; tipo_caixa_diario_id: string; formas: Record<Column, string> };
 type Lookup = { bancos: Row[]; formas: Row[]; tiposCaixa: Row[] };
-type Day = { chave: string; filial: string; empresa_id: string; data: string; total: number; status: string;
+type Day = { sistemas: string[]; chave: string; filial: string; empresa_id: string; data: string; total: number; status: string;
     historico?: { service: number; zaal: number; despesas: number; resultado: number } | null;
     originais: Record<Column, number>; valores: Record<Column, number>; sangria: number; suprimento: number;
     pendencias: { campo: string; valor: number; motivo: string }[]; valores_formulario: DailyCashValues };
-type Analysis = { filiais: string[]; anteriores: number; dias: Day[] };
-type Preview = Analysis & { conflitos: { filial: string; data: string }[]; quantidade: number; total: number; importados: number; ignorados: number; total_ignorado: number; dias_importados: { filial: string; data: string }[] };
+type Analysis = { sistemas: string[]; filiais: string[]; anteriores: number; dias: Day[] };
+type Preview = Analysis & { conflitos: { filial: string; data: string }[]; quantidade: number; total: number; importados: number; ignorados: number; total_ignorado: number; avisos?: string[]; dias_importados: { filial: string; data: string }[] };
 type Request = <T>(path: string, options: RequestInit, company?: string) => Promise<T>;
 export type DailyCashImportHandle = { closeManual: () => boolean };
 type Props = { companies: Company[]; companyId: string; request: Request; busy: boolean; onBusy: (value: boolean) => void; onChanged: () => Promise<void>; ref?: Ref<DailyCashImportHandle> };
@@ -21,12 +21,53 @@ const money = (value: number) => value.toLocaleString("pt-BR", { style: "currenc
 const dateLabel = (date: string) => date.split("-").reverse().join("/");
 const emptyMapping = (company = ""): Mapping => ({ empresa_id: company, tipo_caixa_diario_id: "", formas: { Rec_Dinheiro: "", "Rec_Cartão": "", Rec_Banco: "", Rec_Outros: "" } });
 
-export function DailyCashImport({ companies, companyId, request, busy, onBusy, onChanged, ref }: Props) {
+export function DailyCashImport(props: Props) {
     const [file, setFile] = useState("");
     const [filename, setFilename] = useState("");
     const [start, setStart] = useState("");
-    const [analysis, setAnalysis] = useState<Analysis | null>(null);
-    const [mappings, setMappings] = useState<Record<string, Mapping>>({});
+    const [stages, setStages] = useState<Analysis[]>([]);
+    const [active, setActive] = useState(0);
+    const [error, setError] = useState("");
+    const working = useRef(false);
+    async function run(action: () => Promise<void>) {
+        if (working.current) return;
+        working.current = true; props.onBusy(true); setError("");
+        try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ler o arquivo"); }
+        finally { working.current = false; props.onBusy(false); }
+    }
+    return <>
+        {!stages.length && <div className="record-form"><div className="form-grid">
+            <label className="form-field">Arquivo TXT<input type="file" accept=".txt,text/plain" disabled={props.busy} onChange={event => {
+                const selected = event.target.files?.[0]; if (!selected) return;
+                void run(async () => {
+                    if (selected.size > 8_000_000) throw new Error("O TXT deve ter até 8 MB");
+                    const bytes = await selected.arrayBuffer(); let text: string;
+                    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1252").decode(bytes); }
+                    setFile(text); setFilename(selected.name);
+                });
+            }} /></label>
+            <label className="form-field">Data inicial<input type="date" required value={start} disabled={props.busy} onChange={event => setStart(event.target.value)} /></label>
+        </div><button type="button" className="button button-secondary" disabled={props.busy || !file || !start} onClick={() => void run(async () => {
+            const analyze = (sistema?: string) => props.request<Analysis>("/importacao/caixa-diario", { method: "POST", body: JSON.stringify({ acao: "analisar", arquivo: file, data_inicial: start, sistema }) }, props.companyId);
+            const discovery = await analyze();
+            setStages(discovery.sistemas.length > 1 ? await Promise.all(discovery.sistemas.map(system => analyze(system))) : [discovery]);
+        })}>Analisar arquivo</button></div>}
+        {error && <div className="inline-error" role="alert">{error}</div>}
+        {stages.length > 1 && <div className="record-form"><p>Etapa {active + 1} de {stages.length}</p><div className="account-create-buttons">
+            <button type="button" className="button button-secondary" disabled={props.busy || active === 0} onClick={() => setActive(active - 1)}>Etapa anterior</button>
+            <button type="button" className="button button-secondary" disabled={props.busy || active === stages.length - 1} onClick={() => setActive(active + 1)}>Próxima etapa</button>
+        </div></div>}
+        {stages.map((analysis, index) => {
+            const system = analysis.dias[0]?.sistemas[0] || analysis.sistemas[index] || analysis.sistemas[0];
+            return <div key={system} hidden={index !== active}><DailyCashImportStage {...props} ref={index === active ? props.ref : undefined}
+                system={system} source={{ file, filename, start, analysis }} /></div>;
+        })}
+    </>;
+}
+
+function DailyCashImportStage({ companies, companyId, request, busy, onBusy, onChanged, ref, source, system }: Props & { source: { file: string; filename: string; start: string; analysis: Analysis }; system: string }) {
+    const { file, filename, start, analysis } = source;
+    const [mappings, setMappings] = useState<Record<string, Mapping>>(() => Object.fromEntries(analysis.filiais.map(filial => [filial, emptyMapping()])));
     const [lookups, setLookups] = useState<Record<string, Lookup>>({});
     const [preview, setPreview] = useState<Preview | null>(null);
     const [resolved, setResolved] = useState<string[]>([]);
@@ -41,7 +82,7 @@ export function DailyCashImport({ companies, companyId, request, busy, onBusy, o
     } }), [manual]);
     const locked = busy || done || resolved.length > 0;
     const post = <T,>(body: object) => request<T>("/importacao/caixa-diario", { method: "POST", body: JSON.stringify(body) }, companyId);
-    const payload = () => ({ arquivo: file, data_inicial: start, filiais: Object.fromEntries(Object.entries(mappings).map(([filial, mapping]) => [filial, { ...mapping, formas: Object.fromEntries(Object.entries(mapping.formas).filter(([, id]) => id)) }])), resolvidos: resolved });
+    const payload = () => ({ arquivo: file, data_inicial: start, sistema: system, filiais: Object.fromEntries(Object.entries(mappings).map(([filial, mapping]) => [filial, { ...mapping, formas: Object.fromEntries(Object.entries(mapping.formas).filter(([, id]) => id)) }])), resolvidos: resolved });
     async function run(action: () => Promise<void>) {
         if (working.current) return;
         working.current = true; onBusy(true); setError("");
@@ -72,11 +113,6 @@ export function DailyCashImport({ companies, companyId, request, busy, onBusy, o
     function updateMapping(filial: string, mapping: Mapping) {
         setMappings(current => ({ ...current, [filial]: mapping })); setPreview(null);
     }
-    async function analyze() {
-        const result = await post<Analysis>({ acao: "analisar", arquivo: file, data_inicial: start });
-        setAnalysis(result); setPreview(null); setIgnored([]); setResolved([]);
-        setMappings(Object.fromEntries(result.filiais.map(filial => [filial, emptyMapping()])));
-    }
     async function saveManual(values: DailyCashValues) {
         if (!manual) return;
         await run(async () => {
@@ -97,39 +133,23 @@ export function DailyCashImport({ companies, companyId, request, busy, onBusy, o
     </div>;
     const pending = preview?.dias.filter(day => day.status === "pendente" && !ignored.includes(day.chave)) ?? [];
     return <div className="record-form daily-cash-import">
-        <div className="form-grid">
-            <label className="form-field">Arquivo TXT<input type="file" accept=".txt,text/plain" disabled={locked} onChange={event => {
-                const selected = event.target.files?.[0];
-                if (!selected) return;
-                void run(async () => {
-                    if (selected.size > 8_000_000) throw new Error("O TXT deve ter até 8 MB.");
-                    const bytes = await selected.arrayBuffer();
-                    let text: string;
-                    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
-                    catch { text = new TextDecoder("windows-1252").decode(bytes); }
-                    setFile(text); setFilename(selected.name); setAnalysis(null); setPreview(null); setMappings({});
-                });
-            }} /></label>
-            <label className="form-field">Data inicial<input type="date" required value={start} disabled={locked} onChange={event => { setStart(event.target.value); setAnalysis(null); setPreview(null); }} /></label>
-        </div>
-        <p>Dinheiro = valor informado + sangria − suprimento. Sem recebimentos originais, a baixa histórica usa Receita Service + Receita Zaal − Despesas. Nos demais dias, essas receitas e despesas não entram no cálculo. A configuração de início do caixa da empresa será preservada.</p>
-        <button type="button" className="button button-secondary" disabled={locked || !file || !start} onClick={() => void run(analyze)}>Analisar arquivo</button>
+        <h3>Importação de {system}</h3><p>Plano de contas: <b>{system}</b>. Será criado na empresa se ainda não existir.</p>
         {analysis && <>
             <p>{filename} · {analysis.dias.length} dias no período · {analysis.anteriores} registros anteriores ignorados.</p>
             {analysis.filiais.map(filial => {
                 const mapping = mappings[filial] || emptyMapping(), data = lookups[mapping.empresa_id];
-                const forms = data?.formas.map(form => [String(form.id), `${String(data.bancos.find(bank => bank.id === form.banco_id)?.descricao)} — ${String(form.descricao)}`] as [string, string]) || [];
+                const forms = data?.formas.slice().sort((a,b) => String(a.descricao).localeCompare(String(b.descricao), "pt-BR") || String(data.bancos.find(bank => bank.id === a.banco_id)?.descricao).localeCompare(String(data.bancos.find(bank => bank.id === b.banco_id)?.descricao), "pt-BR")).map(form => [String(form.id), String(form.descricao)] as [string, string]) || [];
                 return <fieldset key={filial} disabled={locked}><legend>Filial {filial}</legend><div className="form-grid cash-import-mapping">
                     <label className="form-field">Empresa<Combobox label={`Empresa da filial ${filial}`} disabled={locked} value={mapping.empresa_id} options={companies.map(company => [company.id, company.nome])} onChange={id => {
                         updateMapping(filial, emptyMapping(id));
                         if (id) void run(async () => {
                             const data = await loadCompany(id);
-                            const type = data.tiposCaixa.find(row => String(row.descricao).toLocaleLowerCase() === "service/zaal");
+                            const type = data.tiposCaixa.find(row => String(row.descricao).toLocaleLowerCase() === system.toLocaleLowerCase());
                             setMappings(current => current[filial]?.empresa_id === id ? { ...current, [filial]: { ...current[filial], tipo_caixa_diario_id: String(type?.id || "") } } : current);
                         });
                     }} /></label>
                     <label className="form-field">Tipo de caixa<Combobox label={`Tipo da filial ${filial}`} disabled={locked || !data} value={mapping.tipo_caixa_diario_id} options={data?.tiposCaixa.map(row => [String(row.id), String(row.descricao)]) || []} onChange={id => updateMapping(filial, { ...mapping, tipo_caixa_diario_id: id })} /></label>
-                    {analysis.dias.some(day => day.filial === filial && !day.historico) && columns.map(([column, label]) => <label key={column} className="form-field">{label}<Combobox label={`${label} da filial ${filial}`} disabled={locked || !data} value={mapping.formas[column]} options={forms.filter(([id]) => id === mapping.formas[column] || !Object.values(mapping.formas).includes(id))}
+                    {analysis.dias.some(day => day.filial === filial && !day.historico) && columns.map(([column, label]) => <label key={column} className="form-field">{label}<Combobox label={`${label} da filial ${filial}`} twoColumns optionDetails={Object.fromEntries((data?.formas || []).map(form => [String(form.id), String(data?.bancos.find(bank => bank.id === form.banco_id)?.descricao || "Sem banco")]))} disabled={locked || !data} value={mapping.formas[column]} options={forms.filter(([id]) => id === mapping.formas[column] || !Object.values(mapping.formas).includes(id))}
                         onChange={id => updateMapping(filial, { ...mapping, formas: { ...mapping.formas, [column]: id } })} /></label>)}
                 </div></fieldset>;
             })}
@@ -141,6 +161,7 @@ export function DailyCashImport({ companies, companyId, request, busy, onBusy, o
             {done ? <div className="inline-success" role="status">{preview.importados} caixas importados. As pendências continuam disponíveis abaixo para resolução manual.</div> : <p><b>{preview.quantidade} caixas para importar · {money(preview.total)}</b> · {preview.dias.filter(day => day.status === "zero").length} dias zerados.</p>}
             {preview.conflitos.length > 0 && <details className="cash-import-existing"><summary>Caixas já existentes ({preview.ignorados}) · {money(preview.total_ignorado)} — serão ignorados</summary><ul className="cash-import-existing-list">{preview.conflitos.map(item => <li key={`${item.filial}:${item.data}`}>Filial {item.filial} · {dateLabel(item.data)}</li>)}</ul></details>}
             {done && preview.dias_importados.length > 0 && <details><summary>Dias importados ({preview.importados}) · {money(preview.total)}</summary><ul className="cash-import-existing-list">{preview.dias_importados.map(item => <li key={`${item.filial}:${item.data}`}>Filial {item.filial} · {dateLabel(item.data)}</li>)}</ul></details>}
+            {preview.avisos?.map(message => <p key={message} role="status">{message}</p>)}
             <h3>Pendências ({pending.length})</h3>
             {pending.length === 0 && <p>Nenhuma pendência aguardando decisão.</p>}
             {pending.map(day => <div className="cash-import-pending" key={day.chave}>

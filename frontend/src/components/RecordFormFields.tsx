@@ -72,7 +72,7 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
         if (isLancamento && fixedType && field.name === "tipo") return <input key={field.name} type="hidden" name="tipo" value={fixedType} />;
         if (launch && field.name === "num_doc") return null;
         if (field.type === "checkbox") return <PersonRoles key={field.name} selectedRow={selectedRow} />;
-            if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name + companyId} selectedRow={selectedRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} loadOptions={loadOptions} />;
+            if (launch && field.name === "pessoa_id") return <ClientSearch key={field.name + companyId} selectedRow={selectedRow} rows={lookups.pessoas || []} onCreate={onCreatePerson} modalCreate={isLancamento} loadOptions={loadOptions} />;
         if (isLancamento && field.name === "valor") return null;
         if (launch && field.name === "valor") return <AccountValueInput key={field.name} account={selectedRow} liquidOnly onChange={onValueChange} />;
         const formField = <label key={field.name} className={`form-field ${field.wide || (isLancamento && field.name === "tipo") ? "full-field" : ""}`}>{field.name === "valor" && isLancamento ? mode === "total" ? "Valor total da operação" : "Valor de cada parcela" : field.label}
@@ -109,8 +109,8 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
     return <>{messageBox}<div className="account-create-layout">
         {hasEdits && <input type="hidden" name="parcelas_personalizadas" value={JSON.stringify(preview.map(row => ({ valor: Number(row.valor), data_vencimento: row.vencimento })))} />}
         <div className="account-create-main">{formFields}{children}</div>
-        <aside className="account-installment-panel" aria-label="Pagamento">
-            <h3><Icon name="wallet" /> Pagamento</h3>
+        <aside className="account-installment-panel" aria-label="Valores">
+            <h3><Icon name="wallet" /> Valores</h3>
             <div className="value-mode">
                 <label><input type="radio" name="modo_valor" aria-label="Informar valor total" value="total" checked={mode === "total"} onChange={() => void changeGeneration(() => setMode("total"))} /> Valor total</label>
                 <label><input type="radio" name="modo_valor" aria-label="Informar valor de cada parcela" value="parcela" checked={mode === "parcela"} onChange={() => void changeGeneration(() => setMode("parcela"))} /> Valor por parcela</label>
@@ -132,6 +132,7 @@ export function RecordFormFields({ fields, selectedRow, lookups, editing, fixedT
                     <tbody>{preview.map(row => <tr key={row.numero}><td>{row.competencia}</td><td><input aria-label={`Vencimento da parcela ${row.numero}`} type="date" required value={row.vencimento} onChange={event => setInstallmentEdits(current => ({ ...current, [row.numero]: { ...current[row.numero], vencimento: event.target.value } }))} /></td><td>{row.numero}/{installments}</td><td><input aria-label={`Valor da parcela ${row.numero}`} type="number" min="0.01" step="0.01" required value={row.valor} onChange={event => setInstallmentEdits(current => ({ ...current, [row.numero]: { ...current[row.numero], valor: event.target.value } }))} /></td></tr>)}</tbody>
                 </table></div> : <p className="installment-preview-empty">Preencha valor, vencimento, competência e os intervalos, se personalizados, para visualizar as parcelas.</p>}
             <div className="installment-total" role="status">Total da operação <b>{total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div>
+            <label className="detail-toggle keep-account-data"><input type="checkbox" name="manter_dados_conta" /> Manter dados para cadastrar outra conta</label>
         </aside>
     </div></>;
 }

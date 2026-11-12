@@ -16,6 +16,8 @@
 @media (min-width: 761px) {
     .resource-lancamentos td.account-col-saldo { min-width: 150px; }
     .page-lancamentos .resource-lancamentos .launch-actions { position: sticky; right: 0; z-index: 2; box-shadow: -5px 0 8px #103e4714; }
+    /* A lista precisa elevar também a célula sticky, que cria seu próprio contexto de empilhamento. */
+    .page-lancamentos .resource-lancamentos .launch-actions:has(.combobox-results) { z-index: 4; }
     .page-lancamentos .resource-lancamentos .action-head { position: sticky; right: 0; z-index: 3; }
 }
 @media (max-width: 760px) {

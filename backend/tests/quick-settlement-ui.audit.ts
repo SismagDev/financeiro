@@ -1,13 +1,31 @@
 // Opt-in: frontend local em execução; API simulada, sem alterações no banco real.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chromium } from "playwright";
+import { chromium, type Locator } from "playwright";
 import { localDateInputValue } from "../../frontend/src/utils/dates";
 
 async function run() {
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+        async function openQuick(row: Locator) {
+            if (page.viewportSize()!.width <= 760) {
+                await row.scrollIntoViewIfNeeded();
+                await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                await row.getByRole("button", { name: /^Ações da conta:/ }).click();
+                await page.getByRole("menuitem", { name: "Baixa rápida", exact: true }).click();
+            } else await row.getByRole("button", { name: "Baixa rápida", exact: true }).click();
+        }
+        async function assertOptionsOnTop(options = page.locator(".quick-settlement").getByRole("option")) {
+            await options.last().waitFor();
+            for (const option of await options.all()) {
+                assert.ok(await option.evaluate(element => {
+                    const rect = element.getBoundingClientRect();
+                    return [rect.left + 8, rect.left + rect.width / 2, rect.right - 8].every(x =>
+                        element.contains(document.elementFromPoint(x, rect.top + rect.height / 2)));
+                }), "As opções devem ficar visíveis acima dos outros controles e linhas.");
+            }
+        }
         const companies = [randomUUID(), randomUUID()], forms = [randomUUID(), randomUUID()];
         const accounts = companies.map((empresa_id, index) => ({ id: randomUUID(), empresa_id, numero: index + 1,
             descricao: `Conta rápida ${index + 1}`, tipo: index ? "pagar" : "receber", valor: 100,
@@ -40,8 +58,10 @@ async function run() {
                 assert.equal(url.searchParams.get("ativo"), "true");
                 assert.ok(companies.includes(company!));
                 const index = companies.indexOf(company!);
-                return route.fulfill({ json: { data: [{ id: forms[index], empresa_id: company, descricao: `Pix empresa ${index + 1}`, ativo: true }], meta: { total: 1, pagina: 1, paginas: 1 } } });
+                return route.fulfill({ json: { data: Array.from({ length: 4 }, (_, item) => ({ id: item ? `${forms[index]}-${item}` : forms[index], empresa_id: company,
+                    descricao: item ? `Pix alternativo ${item}` : `Pix empresa ${index + 1}`, banco_descricao: `Banco ${item + 1}`, ativo: true })), meta: { total: 4, pagina: 1, paginas: 1 } } });
             }
+            if (path === "/bancos") return route.fulfill({ json: { data: [{ id: "banco-teste", empresa_id: companies[1], descricao: "Banco teste" }], meta: { total: 1, pagina: 1, paginas: 1 } } });
             if (["/recebimentos", "/movimentacoes", "/pessoas", "/planos-contas", "/bancos"].includes(path)) return route.fulfill({ json: { data: [], meta: { total: 0, pagina: 1, paginas: 1 } } });
             return route.continue();
         });
@@ -52,12 +72,18 @@ async function run() {
         await first.waitFor();
         await page.getByRole("combobox", { name: "Tipo de conta", exact: true }).click();
         assert.deepEqual(await page.getByRole("listbox", { name: "Tipo de conta", exact: true }).getByRole("option").allTextContents(), ["A pagar", "A receber", "Todos"]);
+        await assertOptionsOnTop(page.getByRole("listbox", { name: "Tipo de conta", exact: true }).getByRole("option"));
         await page.getByRole("heading", { name: "Contas", exact: true }).click();
         assert.equal(await second.getByRole("button", { name: "Baixa", exact: true }).count(), 1);
         assert.equal(await page.getByText("Dar baixa", { exact: true }).count(), 0);
         await first.getByRole("button", { name: "Baixa rápida", exact: true }).click();
         assert.equal(await quick.count(), 1);
         assert.equal(await quick.getByRole("button", { name: "Confirmar baixa rápida" }).isDisabled(), true);
+        await quick.getByRole("combobox").click();
+        await assertOptionsOnTop();
+        assert.equal(await quick.getByRole("option").count(), 4);
+        if (process.env.AUDIT_OUTPUT_DIR) await page.screenshot({ path: `${process.env.AUDIT_OUTPUT_DIR}/opcoes-baixa-rapida-desktop.png` });
+        await quick.getByRole("combobox").press("Escape");
         await second.getByRole("button", { name: "Baixa rápida", exact: true }).click();
         assert.equal(await first.locator(".quick-settlement").count(), 0);
         assert.equal(await second.locator(".quick-settlement").count(), 1);
@@ -77,13 +103,23 @@ async function run() {
             if (action === "settle") await second.getByRole("button", { name: "Baixa", exact: true }).click();
             await page.getByRole("dialog").waitFor();
             assert.equal(await quick.count(), 0);
+            if (action === "settle") {
+                const dialog = page.getByRole("dialog");
+                await dialog.getByRole("combobox", { name: "Banco", exact: true }).click();
+                await dialog.getByRole("option", { name: "Banco teste", exact: true }).click();
+                await dialog.getByRole("combobox", { name: "Forma de pagamento", exact: true }).click();
+                await dialog.getByRole("option", { name: "Pix empresa 2", exact: true }).waitFor();
+                await assertOptionsOnTop(dialog.locator(".combobox-results").getByRole("option"));
+                if (process.env.AUDIT_OUTPUT_DIR) await page.screenshot({ path: `${process.env.AUDIT_OUTPUT_DIR}/opcoes-baixa-modal.png` });
+                await dialog.getByRole("option", { name: "Pix empresa 2", exact: true }).click();
+            }
             await page.getByRole("button", { name: "Fechar cadastro", exact: true }).click();
             await page.getByRole("dialog").waitFor({ state: "hidden" });
         }
         // Forma da empresa correta, erro recuperável, confirmação única e saldo atualizado.
         for (const [index, row] of [first, second].entries()) {
             if (index) await page.setViewportSize({ width: 390, height: 844 });
-            await row.getByRole("button", { name: "Baixa rápida", exact: true }).click();
+            await openQuick(row);
             assert.ok(await page.locator(".table-wrap").evaluate(element =>
                 Math.abs(element.scrollWidth - element.clientWidth - element.scrollLeft) <= 1));
             await row.hover();
@@ -96,10 +132,14 @@ async function run() {
             }
             await quick.getByRole("combobox").fill("Pix");
             await quick.getByRole("option", { name: `Pix empresa ${index + 1}` }).waitFor();
+            await assertOptionsOnTop();
+            if (process.env.AUDIT_OUTPUT_DIR) await page.screenshot({ path: `${process.env.AUDIT_OUTPUT_DIR}/opcoes-baixa-rapida-${index ? "mobile" : "desktop"}.png` });
             await quick.getByRole("combobox").press("ArrowDown");
             await quick.getByRole("combobox").press("Enter");
-            const previous = await row.locator(".settle-row-button").boundingBox(), editor = await quick.boundingBox();
-            assert.ok(previous && editor && previous.x + previous.width <= editor.x && Math.abs(previous.y + previous.height / 2 - editor.y - editor.height / 2) < 2);
+            if (!index) {
+                const previous = await row.locator(".settle-row-button").boundingBox(), editor = await quick.boundingBox();
+                assert.ok(previous && editor && previous.x + previous.width <= editor.x && Math.abs(previous.y + previous.height / 2 - editor.y - editor.height / 2) < 2);
+            }
             await quick.scrollIntoViewIfNeeded();
             if (process.env.AUDIT_OUTPUT_DIR) await page.screenshot({ path: `${process.env.AUDIT_OUTPUT_DIR}/baixa-rapida-${index ? "mobile" : "desktop"}.png` });
             if (!index) {

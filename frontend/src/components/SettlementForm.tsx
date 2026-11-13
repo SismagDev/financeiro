@@ -14,9 +14,11 @@ export function SettlementForm({ account, banks, paymentForms, remaining, busy, 
     const [modifier, setModifier] = useState("none");
     const [modifierValue, setModifierValue] = useState("0");
     const discount = modifier === "desconto" ? modifierValue : "0";
-    const surcharge = modifier === "acrescimo" ? modifierValue : "0";
-    const finalValue = liquidSettlementValue(Number(base), Number(discount), Number(surcharge));
-    const invalid = Number(base) <= 0 || Number(base) > remaining || Number(discount) > Number(base) || finalValue <= 0;
+    const automaticSurcharge = Math.max(0, Math.round(Number(base) * 100) - Math.round(remaining * 100)) / 100;
+    const surcharge = liquidSettlementValue(automaticSurcharge, 0, modifier === "acrescimo" ? Number(modifierValue) : 0);
+    const principal = Math.min(Number(base), remaining);
+    const finalValue = liquidSettlementValue(principal, Number(discount), surcharge);
+    const invalid = !Number.isFinite(finalValue) || principal <= 0 || Number(discount) > principal || finalValue <= 0;
     return <form onSubmit={onSubmit} className="record-form settlement-form">
         <div className={"settle-summary " + (account.tipo === "receber" ? "income-settle" : "expense-settle")}>
             <span title={String(account.descricao)}>{account.tipo === "receber" ? "Recebimento" : "Pagamento"} · {String(account.descricao)}</span>
@@ -25,7 +27,7 @@ export function SettlementForm({ account, banks, paymentForms, remaining, busy, 
         <div className="form-grid">
             <BankPaymentFields banks={banks} paymentForms={paymentForms} loadOptions={loadOptions} disabled={busy} />
             <label className="form-field">Valor do saldo a baixar
-                <input type="number" min="0.01" max={remaining} step="0.01" required value={base} onChange={event => setBase(event.target.value)} />
+                <input type="number" min="0.01" step="0.01" required value={base} onChange={event => setBase(event.target.value)} />
             </label>
             <label className="form-field">Data
                 <input name="data" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
@@ -36,12 +38,13 @@ export function SettlementForm({ account, banks, paymentForms, remaining, busy, 
                 </select>
             </label>
             <label className="form-field">Valor do modificador
-                <input type="number" min="0" max={modifier === "desconto" ? Number(base) : undefined} step="0.01" required disabled={modifier === "none"} value={modifierValue} onChange={event => setModifierValue(event.target.value)} />
+                <input type="number" min="0" max={modifier === "desconto" ? principal : undefined} step="0.01" required disabled={modifier === "none"} value={modifierValue} onChange={event => setModifierValue(event.target.value)} />
             </label>
         </div>
         <input name="valor" type="hidden" value={finalValue.toFixed(2)} />
         <input name="desconto" type="hidden" value={discount} />
         <input name="acrescimo" type="hidden" value={surcharge} />
+        {automaticSurcharge > 0 && <p className="field-hint" role="status">O valor informado supera o saldo. Acréscimo automático de {formatValue("valor", automaticSurcharge)} incluído nesta baixa.</p>}
         {invalid && <p className="field-hint" role="alert">Informe uma parte válida do saldo, desconto até esse valor e valor efetivo maior que zero.</p>}
         <div className="modal-actions">
             <button type="button" className="button button-quiet" disabled={busy} onClick={onCancel}>Cancelar</button>

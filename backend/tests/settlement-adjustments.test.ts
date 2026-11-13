@@ -89,6 +89,24 @@ for (const table of ["movimentacoes", "recebimentos"] as const) {
         assert.equal(result.saldo, 0);
         assert.equal(launch.acrescimo, "10.00");
     });
+
+    test(`${table}: baixa abaixo, igual e acima do saldo persiste o excedente uma única vez`, async () => {
+        for (const [value, surcharge, balance] of [[50, 0, 30], [80, 0, 0], [95, 15, 0]]) {
+            const { client, rows, launch } = fixture(table);
+            await createSettlement(client, company, table, { lancamentoId: account, formaPagamentoId: company, valor: 20 });
+            const result = await createSettlement(client, company, table, {
+                lancamentoId: account, formaPagamentoId: company, valor: value, acrescimo: surcharge,
+            });
+            assert.deepEqual(rows.get(result.id), { valor: value, desconto: 0, acrescimo: surcharge });
+            assert.equal(result.saldo, balance);
+            assert.equal(result.status, balance ? "parcial" : "pago");
+            assert.equal(Number(launch.acrescimo), 0);
+            await deleteSettlement(client, company, table, result.id);
+            assert.equal(remainingAmount({ id: account, tipo: launch.tipo, ...launch }, {
+                [table]: [...rows.values()].map(row => ({ ...row, lancamento_id: account })),
+            }), 80);
+        }
+    });
 }
 
 test("valor efetivo da baixa mantém os centavos e distingue desconto de pagamento parcial", () => {

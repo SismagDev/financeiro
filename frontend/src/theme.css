@@ -43,8 +43,6 @@
 .daily-cash-entries li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .daily-cash-entries small { display: block; color: var(--muted); }
 .daily-cash-entries b { white-space: nowrap; }
-.quick-settlement .combobox-results { width: min(300px, 78vw); left: auto; right: 0; }
-.table-wrap:has(.quick-settlement .combobox-results) { padding-bottom: 220px; }
 .quick-settlement .combobox-results button.combobox-two-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
 .combobox-two-columns > :is(span, small) { min-width: 0; overflow-wrap: anywhere; }
 .combobox-two-columns > small { color: var(--muted); font-size: 11px; }
@@ -292,7 +290,6 @@ input::placeholder, textarea::placeholder, .auth-card input::placeholder,
 .account-new-modal .account-installment-panel > :not(.installment-preview-wrap) { flex-shrink: 0; }
 .account-new-modal > div > .record-form > .modal-actions { position: static; flex: 0 0 auto; padding: 10px 0 0; margin-top: 10px; }
 .account-new-modal .combobox { position: relative; }
-.account-new-modal .combobox-results { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-height: 160px; box-shadow: 0 6px 16px #103e471a; }
 
 @media (min-width: 901px) {
     .account-new-modal .account-create-main > .form-grid { height: 100%; grid-template-rows: repeat(4, max-content) minmax(0, 1fr); }

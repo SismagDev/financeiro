@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { OptionLoader } from "../types";
 
 type Props = {
@@ -28,6 +28,7 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
     const id = useId();
     const input = useRef<HTMLInputElement>(null);
     const root = useRef<HTMLDivElement>(null);
+    const results = useRef<HTMLDivElement>(null);
     const [selected, setSelected] = useState(defaultValue);
     const [query, setQuery] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
@@ -38,6 +39,57 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
     const [retry, setRetry] = useState(0);
     const [requestedPage, setRequestedPage] = useState(1);
     const remoteKey = JSON.stringify([source, query ?? ""]);
+    useLayoutEffect(() => {
+        const list = results.current, control = input.current;
+        if (!open || disabled || !list || !control) return;
+        // A camada nativa ultrapassa overflow e modais sem retirar a lista do formulário.
+        list.showPopover();
+        const position = () => {
+            const rect = control.getBoundingClientRect();
+            const viewport = window.visualViewport;
+            const scale = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+            const left = (viewport?.offsetLeft ?? 0) + 16;
+            const top = (viewport?.offsetTop ?? 0) + 16;
+            const right = (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - 16;
+            const bottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - 24;
+            const width = Math.min(Math.max(rect.width, twoColumns ? 300 * scale : 0), Math.max(0, right - left));
+            list.style.width = `${width / scale}px`;
+            const below = Math.max(0, bottom - rect.bottom - 5);
+            const above = Math.max(0, rect.top - top - 5);
+            const desired = Math.min(480 * scale, (list.scrollHeight + 2) * scale);
+            const upwards = below < desired && above > below;
+            const height = Math.min(desired, upwards ? above : below);
+            list.style.maxHeight = `${height / scale}px`;
+            list.style.left = `${Math.max(left, Math.min(twoColumns ? rect.right - width : rect.left, right - width)) / scale}px`;
+            list.style.top = `${Math.max(top, Math.min(upwards ? rect.top - 5 - Math.min(height, (list.scrollHeight + 2) * scale) : rect.bottom + 5, bottom - height)) / scale}px`;
+        };
+        position();
+        const resize = new ResizeObserver(position);
+        resize.observe(control);
+        resize.observe(document.documentElement);
+        const content = new MutationObserver(position);
+        content.observe(list, { childList: true, subtree: true, characterData: true });
+        window.addEventListener("resize", position);
+        document.addEventListener("scroll", position, true);
+        window.visualViewport?.addEventListener("resize", position);
+        window.visualViewport?.addEventListener("scroll", position);
+        return () => {
+            resize.disconnect(); content.disconnect();
+            window.removeEventListener("resize", position);
+            document.removeEventListener("scroll", position, true);
+            window.visualViewport?.removeEventListener("resize", position);
+            window.visualViewport?.removeEventListener("scroll", position);
+            list.hidePopover();
+        };
+    }, [open, disabled, twoColumns]);
+    useLayoutEffect(() => {
+        const list = results.current, option = list?.querySelector<HTMLElement>(".active");
+        if (!list || !option) return;
+        const bounds = list.getBoundingClientRect(), item = option.getBoundingClientRect();
+        const scale = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+        if (item.bottom > bounds.bottom) list.scrollTop += (item.bottom - bounds.bottom) / scale;
+        else if (item.top < bounds.top) list.scrollTop += (item.top - bounds.top) / scale;
+    }, [active, open]);
     useEffect(() => {
         if (!open || !source || !loadOptions) return;
         let active = true;
@@ -113,7 +165,7 @@ export function Combobox({ options, name, value, defaultValue = "", onChange, re
             <button type="button" className="combobox-toggle" aria-label={"Abrir opções: " + (label || placeholder)} disabled={disabled}
                 onClick={() => { input.current?.focus(); setQuery(null); setOpen(!open); }}><Icon name="chevron" size={23} /></button>
         </div>
-        {open && !disabled && <div className="combobox-results">
+        {open && !disabled && <div ref={results} popover="manual" className="combobox-results">
             <div id={id + "-results"} role="listbox" aria-label={label || placeholder}>
                 {!required && <button type="button" role="option" aria-selected={!current} onClick={() => choose("")}>{emptyLabel}</button>}
                 {matches.map(([key, text], index) => <button type="button" role="option" aria-selected={current === key}
